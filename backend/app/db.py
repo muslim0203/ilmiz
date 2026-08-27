@@ -41,6 +41,19 @@ if DATABASE_URL.startswith("sqlite"):
             cursor.execute("PRAGMA foreign_keys=ON")
         finally:
             cursor.close()
+        # SQLite'ning o'rnatilgan `lower()` faqat ASCII bilan ishlaydi:
+        # lower('МОРФО') -> 'МОРФО'. Shu sabab `ilike` kirill matnda registrga
+        # sezgir bo'lib qolardi va "морфофункциональная" hech nima topmasdi,
+        # holbuki sarlavha "МОРФОФУНКЦИОНАЛЬНАЯ" bo'lib bazada bor edi.
+        # PostgreSQL'da `ILIKE` o'zi Unicode bilan ishlaydi, bu faqat SQLite muammosi.
+        dbapi_connection.create_function(
+            "lower", 1, lambda value: value.lower() if isinstance(value, str) else value,
+            deterministic=True,
+        )
+        dbapi_connection.create_function(
+            "upper", 1, lambda value: value.upper() if isinstance(value, str) else value,
+            deterministic=True,
+        )
 
 
 class Base(DeclarativeBase):
