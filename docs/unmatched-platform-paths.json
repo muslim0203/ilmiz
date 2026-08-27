@@ -1,0 +1,343 @@
+{
+ "izoh": "Platforma manbalari ajratilganda bizdagi jurnalga moslasha olmagan yo‘llar. Maqolalar o‘chirilgan; qo‘lda xaritalab qaytarish mumkin. OAI manzili: <platforma>/index.php/<yol>/oai",
+ "jami_yol": 48,
+ "jami_maqola": 15282,
+ "yollar": [
+  {
+   "platforma_manbasi": 477,
+   "yol": "gtfj",
+   "maqola": 2090,
+   "repository_name": "Журнал гуманитарных и естественных наук",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Юридик фанлар ахборотномаси – Вестник юр' 0.33)"
+  },
+  {
+   "platforma_manbasi": 267,
+   "yol": "Conferences",
+   "maqola": 1498,
+   "repository_name": "Konferensiyalar | Conferences",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "law",
+   "maqola": 1300,
+   "repository_name": "ЖУРНАЛ ПРАВОВЫХ ИССЛЕДОВАНИЙ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 267,
+   "yol": "ijrs",
+   "maqola": 1210,
+   "repository_name": "INTERNATIONAL JOURNAL OF RECENTLY SCIENTIFIC RESEARCHER'S TH",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Ilmiy va innovatsion terapiya / Scientif' 0.25)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "conference",
+   "maqola": 793,
+   "repository_name": "E-Conference platform",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "tas",
+   "maqola": 573,
+   "repository_name": "ОСНОВЫ МЕДИЦИНЫ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "cajm",
+   "maqola": 531,
+   "repository_name": "Central Asian Journal of Medicine",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Журнал ренессанса ЦА / Journal of Centra' 0.67)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "pedagogy",
+   "maqola": 495,
+   "repository_name": "ИННОВАЦИИ В ПЕДАГОГИКЕ И ПСИХОЛОГИИ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "yotj",
+   "maqola": 464,
+   "repository_name": "Медицинский журнал молодых ученых",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 267,
+   "yol": "NSNR",
+   "maqola": 382,
+   "repository_name": "Нововведения Cовременного Научного Развития в Эпоху Глобализ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '“Спорт илм-фаннинг долзарб муаммолари”, ' 0.12)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "agroprocessing",
+   "maqola": 375,
+   "repository_name": "ЖУРНАЛ АГРО ПРОЦЕССИНГ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Agro ILM' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "uro",
+   "maqola": 374,
+   "repository_name": "ЖУРНАЛ РЕПРОДУКТИВНОГО ЗДОРОВЬЯ И УРО-НЕФРОЛОГИЧЕСКИХ ИССЛЕД",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Journal of reproductive health and uro-n' 0.25)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "oral",
+   "maqola": 334,
+   "repository_name": "ЖУРНАЛ СТОМАТОЛОГИИ И КРАНИОФАЦИАЛЬНЫХ ИССЛЕДОВАНИЙ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Журнал стоматологии и краниофасциальных ' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "spjacd",
+   "maqola": 333,
+   "repository_name": "SCIENTIFIC AND PRACTICAL JOURNAL ANNALS OF CLINICAL DISCIPLI",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Scientific Journal of Science, Research ' 0.25)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "cardio",
+   "maqola": 324,
+   "repository_name": "ЖУРНАЛ КАРДИОРЕСПИРАТОРНЫХ ИССЛЕДОВАНИЙ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "gastro",
+   "maqola": 321,
+   "repository_name": "ЖУРНАЛ ГЕПАТО-ГАСТРОЭНТЕРОЛОГИЧЕСКИХ ИССЛЕДОВАНИЙ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "language",
+   "maqola": 310,
+   "repository_name": "МЕЖДУНАРОДНЫЙ ЖУРНАЛ ЯЗЫКА, ОБРАЗОВАНИЯ, ПЕРЕВОДА",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Journal of Word Art – Сўз санъати халқар' 0.25)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "economy",
+   "maqola": 290,
+   "repository_name": "ЖУРНАЛ ИННОВАЦИИ В ЭКОНОМИКЕ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "crossroads",
+   "maqola": 286,
+   "repository_name": "ПЕРЕКРЁСТОК КУЛЬТУРЫ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 267,
+   "yol": "RESMD",
+   "maqola": 282,
+   "repository_name": "The Role of Exact Sciences in the Era of Modern Development",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Development of science' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "medical",
+   "maqola": 277,
+   "repository_name": "УЗБЕКСКИЙ МЕДИЦИНСКИЙ ЖУРНАЛ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "geography",
+   "maqola": 234,
+   "repository_name": "ГЕОГРАФИЯ: ПРИРОДА И ОБЩЕСТВО",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Фуқаролик жамияти – Гражданское общество' 0.33)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "fm",
+   "maqola": 233,
+   "repository_name": "ВОПРОСЫ ФИЛОЛОГИИ (МАГИСТРАТУРА)",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "technical",
+   "maqola": 202,
+   "repository_name": "ЖУРНАЛ ТЕХНИЧЕСКИХ ИССЛЕДОВАНИЙ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "petroleum",
+   "maqola": 201,
+   "repository_name": "ИННОВАЦИИ В НЕФТЕГАЗОВОЙ ОТРАСЛИ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "navoi",
+   "maqola": 193,
+   "repository_name": "МЕЖДУНАРОДНЫЙ ЖУРНАЛ АЛИШЕРА НАВОИ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Journal of Word Art – Сўз санъати халқар' 0.33)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "cae",
+   "maqola": 163,
+   "repository_name": "ЦЕНТРАЛЬНО АЗИАТСКИЙ ЭНДОКРИНОЛОГИЧЕСКИЙ ЖУРНАЛ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 267,
+   "yol": "XAFT",
+   "maqola": 157,
+   "repository_name": "Analysis of International Sciences",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Юридик фанлар ахборотномаси – Вестник юр' 0.50)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "ota",
+   "maqola": 156,
+   "repository_name": "Медицинский Вестник Узбекистана",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Илмий хабарнома – Научный вестник' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "consensus",
+   "maqola": 125,
+   "repository_name": "МЕЖДУНАРОДНЫЙ ЖУРНАЛ КОНСЕНСУС",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Journal of Word Art – Сўз санъати халқар' 0.50)"
+  },
+  {
+   "platforma_manbasi": 333,
+   "yol": "qx",
+   "maqola": 92,
+   "repository_name": "Agriculture and water management of Uzbekistan",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Sustainable Agriculture' 0.50)"
+  },
+  {
+   "platforma_manbasi": 339,
+   "yol": "qx",
+   "maqola": 92,
+   "repository_name": "Agriculture and water management of Uzbekistan",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Sustainable Agriculture' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "physics",
+   "maqola": 83,
+   "repository_name": "ЖУРНАЛ ФИЗИКО-МАТЕМАТИЧЕСКИЕ НАУКИ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '“Спорт илм-фаннинг долзарб муаммолари”, ' 0.33)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "qon",
+   "maqola": 83,
+   "repository_name": "МЕЖДУНАРОДНЫЙ ЖУРНАЛ БОЛЕЗНЕЙ КРОВООБРАЩЕНИЯ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 729,
+   "yol": "jnc",
+   "maqola": 83,
+   "repository_name": "Journal of national culture",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Oriental Art and Culture' 0.50)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "kptj",
+   "maqola": 73,
+   "repository_name": "Журнал Клинической и Профилактической Медицины",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "biology",
+   "maqola": 59,
+   "repository_name": "ЖУРНАЛ БИОЛОГИИ И ЭКОЛОГИИ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "mjpa",
+   "maqola": 58,
+   "repository_name": "Междисциплинарный журнал психиатрии и аддиктологии",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "veterinariya",
+   "maqola": 53,
+   "repository_name": "ВЕСТНИК ВЕТЕРИНАРИИ И ЖИВОТНОВОДСТВА",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Илмий хабарнома – Научный вестник' 0.50)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "jogprm",
+   "maqola": 19,
+   "repository_name": "Журнал акушерства, гинекологии, перинатальной и репродуктивн",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "yangiasr",
+   "maqola": 16,
+   "repository_name": "\"NEW CENTURY\" - SCIENTIFIC-METHODICAL JOURNAL",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Ilmiy va innovatsion terapiya / Scientif' 0.25)"
+  },
+  {
+   "platforma_manbasi": 729,
+   "yol": "common",
+   "maqola": 15,
+   "repository_name": "Journal of national culture (JNC)",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Oriental Art and Culture' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "chemical",
+   "maqola": 14,
+   "repository_name": "АЛХИМИК",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "ijear",
+   "maqola": 13,
+   "repository_name": "INTERNATIONAL JOURNAL OF ECONOMICS AND ACCOUNTING REVIEW",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Ўзбекистон қонунчилиги таҳлили – Uzbek l' 0.33)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "muallim",
+   "maqola": 12,
+   "repository_name": "УЧИТЕЛЬ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "architecture",
+   "maqola": 8,
+   "repository_name": "ЖУРНАЛ ИННОВАЦИИ В АРХИТЕКТУРЕ",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: '' 0.00)"
+  },
+  {
+   "platforma_manbasi": 477,
+   "yol": "osb",
+   "maqola": 2,
+   "repository_name": "Open Science Books",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Development of science' 0.50)"
+  },
+  {
+   "platforma_manbasi": 177,
+   "yol": "ujcr",
+   "maqola": 1,
+   "repository_name": "UZBEK JOURNAL OF CASE REPORTS",
+   "izoh": "bizdagi jurnalga mos kelmadi (eng yaqin: 'Ўзбекистон қонунчилиги таҳлили – Uzbek l' 0.33)"
+  }
+ ]
+}

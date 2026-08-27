@@ -433,6 +433,35 @@ To‘g‘riligi 493 jurnalning hammasida SQL ground truth bilan solishtirilgan:
 3. Yuqoridagi 5 manbani vaqti-vaqti bilan qayta urinish (rejalashtiruvchi bilan).
 4. Foydalanuvchi alohida rozilik bermaguncha deploy qilinmasin.
 
+## Keyinga qoldirilgan: yo‘qolgan 15 282 maqolani tiklash
+
+Platforma manbalari jurnallarga ajratilganda (`split-platform-source`), 48 ta
+yo‘l bizdagi jurnalga 0.9 chegarasida moslasha olmadi va ularning maqolalari
+o‘chirildi. Ba’zilari haqiqiy OAK jurnallari bo‘lishi mumkin — nomlar
+avtomatik moslashmagan.
+
+To‘liq ro‘yxat: `docs/unmatched-platform-paths.json` (48 yo‘l, 15 282 maqola).
+**Bu faylni saqlash shart** — ifloslangan manbalar o‘chirilgani uchun ro‘yxatni
+qayta hosil qilib bo‘lmaydi.
+
+Eng kattalari:
+
+| Maqola | Yo‘l | repositoryName |
+| --- | --- | --- |
+| 2 090 | `/gtfj` | Журнал гуманитарных и естественных наук |
+| 1 498 | `/Conferences` | Konferensiyalar (jurnal emas) |
+| 1 300 | `/law` | ЖУРНАЛ ПРАВОВЫХ ИССЛЕДОВАНИЙ |
+| 1 210 | `/ijrs` | International Journal of Recently Scientific Research |
+| 793 | `/conference` | E-Conference platform (jurnal emas) |
+| 573 | `/tas` | ОСНОВЫ МЕДИЦИНЫ |
+| 531 | `/cajm` | Central Asian Journal of Medicine |
+| 495 | `/pedagogy` | ИННОВАЦИИ В ПЕДАГОГИКЕ И ПСИХОЛОГИИ |
+
+Tiklash yo‘li: har bir yo‘l uchun `<platforma>/index.php/<yol>/oai` manzilini
+tegishli jurnalga qo‘lda biriktirib, `harvest-all` bilan yig‘ish. Xaritalashni
+qo‘lda tasdiqlash kerak — avtomatik moslashtirish chegarani pasaytirishni
+talab qiladi, bu esa yana noto‘g‘ri biriktirishga olib keladi.
+
 ## Ochiq muammolar (muhimlik tartibida)
 
 1. ~~Admin endpointlarida autentifikatsiya yo‘q~~ — tuzatildi
