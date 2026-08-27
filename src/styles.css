@@ -415,6 +415,8 @@ footer { padding: 32px 0; border-top: 1px solid #d8ddd9; background: #ebece7; }
 .admin-message { display: flex; align-items: center; gap: 9px; margin: -12px 0 20px; padding: 12px 15px; border-radius: 5px; font-size: 11px; }
 .admin-message.success { background: #dfefe5; color: #266c48; }
 .admin-message.error { background: #f4e3df; color: #97483d; }
+.console-empty { color: rgba(255,255,255,.55); font-size: 11px; }
+
 /* Hisob paneli */
 .account-button { padding: 8px 15px; border: 1px solid #cfe0d4; border-radius: 6px; background: #eaf3ec; color: var(--green-900); font: 700 11px "Manrope", sans-serif; cursor: pointer; }
 .account-button:hover { background: #dcebe0; }

@@ -37,12 +37,22 @@ import type { Article, Journal } from "./types";
 type View = "journals" | "articles";
 
 const statusConfig = {
-  healthy: { label: "Sinxron", icon: CheckCircle2, className: "status-good" },
+  healthy: { label: "Yangilanib turadi", icon: CheckCircle2, className: "status-good" },
   warning: { label: "Tekshirilmoqda", icon: AlertTriangle, className: "status-warn" },
-  missing: { label: "OAI mavjud emas", icon: WifiOff, className: "status-muted" },
+  missing: { label: "Qo‘lda kiritilgan", icon: WifiOff, className: "status-muted" },
 };
 
 const number = new Intl.NumberFormat("uz-UZ");
+
+// `toLocaleDateString("uz-UZ", { month: "short" })` brauzerda "M08" beradi,
+// shuning uchun oy nomlari qo'lda.
+const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyun", "iyul", "avg", "sen", "okt", "noy", "dek"];
+
+function shortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return `${date.getDate()}-${MONTHS[date.getMonth()]}`;
+}
 
 function Brand() {
   return (
@@ -132,7 +142,7 @@ function ArticleCard({ article, journal }: { article: Article; journal: Journal 
           <strong>{journal.name}</strong>
           <span>{published}{article.volume !== "—" ? ` · ${article.volume}-jild` : ""}{article.issue !== "—" ? ` · ${article.issue}-son` : ""}{article.pages !== "—" ? ` · ${article.pages}-bet` : ""}</span>
         </div>
-        <span className={article.isDemo ? "demo-badge" : "oai-badge"}>{article.isDemo ? "DEMO" : "OAI-PMH"}</span>
+        {article.isDemo && <span className="demo-badge">DEMO</span>}
       </div>
       <button className="article-title" onClick={() => setOpen((value) => !value)}>
         {article.title}
@@ -150,12 +160,6 @@ function ArticleCard({ article, journal }: { article: Article; journal: Journal 
           <button title="Iqtibos formatlari" onClick={() => setCitationsOpen((value) => !value)}><Download size={16} /> Iqtibos</button>
         </div>
       </div>
-      {open && (
-        <div className="article-detail">
-          <div><span>Nashr sanasi</span><strong>{published}</strong></div>
-          <div><span>Indekslangan</span><strong>{new Date(article.harvestedAt).toLocaleString("uz-UZ")}</strong></div>
-        </div>
-      )}
       {citationsOpen && article.citations && (
         <div className="citation-panel">
           {Object.entries(article.citations).map(([format, value]) => (
@@ -300,16 +304,15 @@ function JournalDrawer({ journal, onClose }: { journal: Journal; onClose: () => 
         <section className="sync-card">
           <div className="sync-icon"><RefreshCw size={19} /></div>
           <div>
-            <span>OAI-PMH monitoringi</span>
-            <strong>{detail.oaiLastSync ?? "Endpoint ulanmagan"}</strong>
-            {detail.oaiBaseUrl && <code>{detail.oaiBaseUrl}</code>}
+            <span>Oxirgi yangilanish</span>
+            <strong>{detail.oaiLastSync ?? "Hozircha yangilanmagan"}</strong>
           </div>
           <HarvestStatus status={detail.oaiStatus} />
         </section>
 
         <section className="drawer-section">
           <div className="section-heading compact-heading">
-            <div><span className="eyebrow">SO‘NGGI NASHRLAR</span><h3>Indekslangan maqolalar</h3></div>
+            <div><span className="eyebrow">SO‘NGGI NASHRLAR</span><h3>Maqolalar</h3></div>
             <span>{journalArticles.length} namuna</span>
           </div>
           {journalArticles.length ? (
@@ -322,11 +325,11 @@ function JournalDrawer({ journal, onClose }: { journal: Journal; onClose: () => 
               ))}
             </div>
           ) : (
-            <p className="empty-note">OAI-PMH endpoint ulanmaguncha maqolalar ko‘rsatilmaydi.</p>
+            <p className="empty-note">Bu jurnalning maqolalari hali yig‘ilmagan.</p>
           )}
         </section>
 
-        {detailState === "ready" && !profile && <p className="profile-empty">Bu jurnal uchun boy profil hali yig‘ilmagan. Asosiy OAK va OAI ma’lumotlari ko‘rsatilmoqda.</p>}
+        {detailState === "ready" && !profile && <p className="profile-empty">Bu jurnal uchun to‘liq profil hali yig‘ilmagan. Asosiy OAK ma’lumotlari ko‘rsatilmoqda.</p>}
         {detailState === "error" && <p className="profile-empty">To‘liq profil API’dan yuklanmadi. Asosiy katalog ma’lumotlari saqlandi.</p>}
 
         <a className="primary-button full-button" href={detail.website} target="_blank" rel="noreferrer">
@@ -391,6 +394,19 @@ function App() {
 
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
+  // Ilgari bu joyda o'ylab topilgan "jonli konsol" turardi: soxta vaqtlar,
+  // HTTP kodlari va yozuv sonlari. Endi haqiqiy yangilanish sanalari.
+  const recentUpdates = useMemo(() => journalIndex
+    .filter((journal) => journal.oaiLastSync)
+    .sort((left, right) => (right.oaiLastSync ?? "").localeCompare(left.oaiLastSync ?? ""))
+    .slice(0, 4)
+    .map((journal) => ({
+      id: journal.id,
+      name: journal.name.length > 34 ? `${journal.name.slice(0, 34)}…` : journal.name,
+      when: shortDate(journal.oaiLastSync as string),
+      articles: number.format(journal.articleCount),
+    })), [journalIndex]);
+
   const topFields = useMemo(() => facets.fieldGroups
     .flatMap((group) => group.fields)
     .sort((left, right) => right.articles - left.articles)
@@ -509,7 +525,7 @@ function App() {
                 <div><span>Oxirgi indekslash</span><strong>bugun, 06:12</strong></div>
                 <span className="index-bars"><i /><i /><i /><i /></span>
               </div>
-              <p>Ma’lumotlar OAI-PMH orqali avtomatik yangilanadi.</p>
+              <p>Ma’lumotlar jurnal saytlaridan avtomatik yangilanadi.</p>
             </div>
             <div className="search-panel">
               <div className="search-box">
@@ -544,8 +560,8 @@ function App() {
         <section className="metric-strip" aria-label="Platforma ko‘rsatkichlari">
           <div className="metric-inner">
             <div><BookOpen size={21} /><span><strong>{number.format(platformStats.journals)}</strong><small>OAK jurnallari</small></span></div>
-            <div><FileText size={21} /><span><strong>{number.format(platformStats.articles)}</strong><small>Indekslangan maqolalar</small></span></div>
-            <div><RefreshCw size={21} /><span><strong>{number.format(platformStats.healthySources)}</strong><small>OAI-PMH manbalar</small></span></div>
+            <div><FileText size={21} /><span><strong>{number.format(platformStats.articles)}</strong><small>Maqolalar</small></span></div>
+            <div><RefreshCw size={21} /><span><strong>{number.format(platformStats.healthySources)}</strong><small>Yangilanadigan jurnallar</small></span></div>
             <div><Layers3 size={21} /><span><strong>{facets.fieldCount || "—"}</strong><small>Ilmiy sohalar</small></span></div>
             <p><Check size={16} /> OAK ro‘yxati: 10-iyun, 2026</p>
           </div>
@@ -556,7 +572,7 @@ function App() {
             <div>
               <span className="eyebrow">OCHIQ KATALOG</span>
               <h2>{view === "journals" ? "OAK jurnallarini o‘rganing" : "Ilmiy maqolalarni izlang"}</h2>
-              <p>{view === "journals" ? "Tasdiqlangan nashrlar, OAI holati va arxiv ko‘rsatkichlari." : "Barcha ulangan jurnallardan yig‘ilgan yagona maqolalar bazasi."}</p>
+              <p>{view === "journals" ? "Tasdiqlangan nashrlar, yangilanish holati va arxiv ko‘rsatkichlari." : "Barcha jurnallardan yig‘ilgan yagona maqolalar bazasi."}</p>
             </div>
             <div className="view-tabs" role="tablist">
               <button className={view === "journals" ? "active" : ""} onClick={() => setView("journals")}><BookOpen size={16} /> Jurnallar</button>
@@ -592,7 +608,7 @@ function App() {
                 </select>
               </label>
               <label className="switch-row">
-                <span><strong>OAI-PMH ulangan</strong><small>Faqat avtomatik yangilanadiganlar</small></span>
+                <span><strong>Avtomatik yangilanadigan</strong><small>Maqolalari muntazam yig‘iladigan jurnallar</small></span>
                 <input type="checkbox" checked={oaiOnly} onChange={(event) => setOaiOnly(event.target.checked)} />
                 <i aria-hidden="true" />
               </label>
@@ -630,23 +646,26 @@ function App() {
 
         <section className="monitor-section" id="monitoring">
           <div className="monitor-copy">
-            <span className="eyebrow light">OAI-PMH MONITORING</span>
+            <span className="eyebrow light">AVTOMATIK YANGILANISH</span>
             <h2>Indeks har doim<br />yangilanib turadi.</h2>
-            <p>Har bir jurnal endpointi alohida kuzatiladi. Xatolar, kechikishlar va metama’lumot sifati admin panelda ko‘rinadi.</p>
+            <p>Har bir jurnal alohida kuzatiladi. Yangi son chiqishi bilan maqolalar indeksga qo‘shiladi.</p>
             <div className="monitor-features">
-              <span><CheckCircle2 size={17} /> Incremental sinxronizatsiya</span>
-              <span><CheckCircle2 size={17} /> Dublikatlarni aniqlash</span>
-              <span><CheckCircle2 size={17} /> Manba tarixini saqlash</span>
+              <span><CheckCircle2 size={17} /> Faqat o‘zgargan yozuvlar olinadi</span>
+              <span><CheckCircle2 size={17} /> Takroriy yozuvlar aniqlanadi</span>
+              <span><CheckCircle2 size={17} /> Har bir maydonning manbasi saqlanadi</span>
             </div>
           </div>
           <div className="monitor-console">
-            <div className="console-head"><span><i /><i /><i /></span><strong>harvester / live</strong><Activity size={16} /></div>
+            <div className="console-head"><span><i /><i /><i /></span><strong>So‘nggi yangilanishlar</strong><Activity size={16} /></div>
             <div className="console-body">
-              <p><time>06:12:08</time><b className="ok">200</b><span>FarDU ilmiy xabarlari</span><small>+12 records</small></p>
-              <p><time>06:11:42</time><b className="ok">200</b><span>Acta CAMU</span><small>no changes</small></p>
-              <p><time>06:10:19</time><b className="wait">206</b><span>Agro ILM</span><small>token 4/7</small></p>
-              <p><time>06:09:51</time><b className="ok">200</b><span>Agro Inform</span><small>+4 records</small></p>
-              <p className="console-pulse"><span /> Keyingi tekshiruv 00:17:42 dan so‘ng</p>
+              {recentUpdates.length === 0 && <p className="console-empty">Yangilanish ma’lumoti hali yo‘q.</p>}
+              {recentUpdates.map((item) => (
+                <p key={item.id}>
+                  <time>{item.when}</time>
+                  <span>{item.name}</span>
+                  <small>{item.articles} maqola</small>
+                </p>
+              ))}
             </div>
           </div>
         </section>
@@ -659,7 +678,7 @@ function App() {
           <div className="principles">
             <article><span>01</span><Globe2 size={22} /><h3>Ochiqlik</h3><p>Metama’lumotlar va qidiruv barcha foydalanuvchilar uchun ochiq.</p></article>
             <article><span>02</span><ShieldCheck size={22} /><h3>Manba aniqligi</h3><p>Har bir maydon qayerdan va qachon olingani qayd etiladi.</p></article>
-            <article><span>03</span><CalendarDays size={22} /><h3>Doimiy yangilanish</h3><p>OAI-PMH orqali faqat o‘zgargan yozuvlar muntazam olinadi.</p></article>
+            <article><span>03</span><CalendarDays size={22} /><h3>Doimiy yangilanish</h3><p>Faqat o‘zgargan yozuvlar muntazam olinadi, indeks eskirmaydi.</p></article>
           </div>
         </section>
       </main>
