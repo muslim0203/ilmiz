@@ -5,7 +5,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
@@ -52,7 +52,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
     allow_methods=["*"],
+    # Frontend sahifalash uchun umumiy sonni shu header'dan o'qiydi.
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -393,12 +395,19 @@ def facets(db: Session = Depends(get_db)) -> dict[str, object]:
     }
 
 
+def _total_of(db: Session, statement) -> int:
+    """Sahifalashdan oldingi umumiy son."""
+    return db.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
+
+
 @app.get("/api/journals")
 def list_journals(
+    response: Response,
     q: str | None = None,
     city: list[str] = Query(default=[]),
     field: list[str] = Query(default=[]),
     oai_only: bool = False,
+    offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
@@ -413,7 +422,8 @@ def list_journals(
         statement = statement.where(Journal.id.in_(allowed))
     # Limit filtrlardan keyin qo‘llanadi — ilgari SQL limiti oldin ishlab,
     # soha filtri faqat birinchi N jurnal ichidan qidirardi.
-    journals = list(db.scalars(statement.limit(limit)).unique())
+    response.headers["X-Total-Count"] = str(_total_of(db, statement))
+    journals = list(db.scalars(statement.offset(offset).limit(limit)).unique())
     counts = journal_counts(db, [journal.id for journal in journals])
     return [journal_payload(journal, counts=counts.get(journal.id, (0, 0))) for journal in journals]
 
@@ -463,6 +473,7 @@ def get_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
 
 @app.get("/api/articles")
 def list_articles(
+    response: Response,
     q: str | None = None,
     journal_slug: str | None = None,
     year: int | None = None,
@@ -485,6 +496,7 @@ def list_articles(
     allowed = matching_journal_ids(db, field, city)
     if allowed is not None:
         statement = statement.where(Article.journal_id.in_(allowed))
+    response.headers["X-Total-Count"] = str(_total_of(db, statement))
     return [article_payload(article) for article in db.scalars(statement.offset(offset).limit(limit))]
 
 

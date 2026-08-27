@@ -223,6 +223,41 @@ class ApiTest(unittest.TestCase):
         self.assertIn("profile", response.json())
         self.assertIn("oakRecords", response.json())
 
+    def test_articles_expose_total_count(self) -> None:
+        """Frontend 500 ta bilan cheklangan edi; umumiy son header'dan keladi."""
+        response = self.client.get("/api/articles", params={"limit": 1})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        stats = self.client.get("/api/stats").json()
+        self.assertEqual(int(response.headers["X-Total-Count"]), stats["articles"])
+
+    def test_journals_expose_total_count(self) -> None:
+        response = self.client.get("/api/journals", params={"limit": 1})
+        self.assertEqual(len(response.json()), 1)
+        everything = self.client.get("/api/journals", params={"limit": 500}).json()
+        self.assertEqual(int(response.headers["X-Total-Count"]), len(everything))
+
+    def test_total_count_respects_filters(self) -> None:
+        params = [("field", "Tibbiyot"), ("limit", 1)]
+        response = self.client.get("/api/journals", params=params)
+        filtered = self.client.get("/api/journals", params=[("field", "Tibbiyot"), ("limit", 500)]).json()
+        self.assertEqual(int(response.headers["X-Total-Count"]), len(filtered))
+        self.assertLess(len(filtered), int(self.client.get("/api/journals", params={"limit": 1}).headers["X-Total-Count"]))
+
+    def test_journal_offset_pages_without_overlap(self) -> None:
+        first = self.client.get("/api/journals", params={"limit": 2, "offset": 0}).json()
+        second = self.client.get("/api/journals", params={"limit": 2, "offset": 2}).json()
+        self.assertEqual(len(first), 2)
+        self.assertTrue(second)
+        self.assertFalse({item["id"] for item in first} & {item["id"] for item in second})
+
+    def test_article_offset_pages_without_overlap(self) -> None:
+        first = self.client.get("/api/articles", params={"limit": 1, "offset": 0}).json()
+        second = self.client.get("/api/articles", params={"limit": 1, "offset": 1}).json()
+        self.assertEqual(len(first), 1)
+        self.assertEqual(len(second), 1)
+        self.assertNotEqual(first[0]["id"], second[0]["id"])
+
 
 if __name__ == "__main__":
     unittest.main()

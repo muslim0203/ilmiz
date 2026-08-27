@@ -26,7 +26,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { loadCatalog, loadJournal, searchArticles, searchJournals, type Facets, type PlatformStats } from "./api";
+import { PAGE_SIZE, loadCatalog, loadJournal, loadJournalArticles, loadJournalIndex, searchArticles, searchJournals, type Facets, type PlatformStats } from "./api";
 import FieldPicker from "./FieldPicker";
 import AdminDashboard from "./AdminDashboard";
 import { articles as demoArticles, journals as demoJournals } from "./data";
@@ -169,9 +169,10 @@ function ArticleCard({ article, journal }: { article: Article; journal: Journal 
   );
 }
 
-function JournalDrawer({ journal, articles, onClose }: { journal: Journal; articles: Article[]; onClose: () => void }) {
+function JournalDrawer({ journal, onClose }: { journal: Journal; onClose: () => void }) {
   const [detail, setDetail] = useState<Journal>(journal);
   const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading");
+  const [journalArticles, setJournalArticles] = useState<Article[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -189,7 +190,15 @@ function JournalDrawer({ journal, articles, onClose }: { journal: Journal; artic
     return () => { active = false; };
   }, [journal]);
 
-  const journalArticles = articles.filter((article) => article.journalId === detail.id);
+  useEffect(() => {
+    let active = true;
+    setJournalArticles([]);
+    loadJournalArticles(journal.id)
+      .then((items) => { if (active) setJournalArticles(items); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [journal]);
+
   const profile = detail.profile;
   const oakRecords = detail.oakRecords ?? [];
   const areas = Array.from(new Set(oakRecords.map((item) => item.area).filter(Boolean)));
@@ -332,7 +341,12 @@ function App() {
   const [platformStats, setPlatformStats] = useState<PlatformStats>({ journals: demoJournals.length, articles: demoArticles.length, healthySources: 0 });
   const [apiState, setApiState] = useState<"loading" | "live" | "fallback">("loading");
   const [adminOpen, setAdminOpen] = useState(false);
-  const [displayLimit, setDisplayLimit] = useState(20);
+  // Maqola kartasi va drawer jurnal obyektini talab qiladi, sahifada esa
+  // atigi PAGE_SIZE ta jurnal bo'ladi — shuning uchun to'liq indeks alohida.
+  const [journalIndex, setJournalIndex] = useState<Journal[]>(demoJournals);
+  const [journalTotal, setJournalTotal] = useState(demoJournals.length);
+  const [articleTotal, setArticleTotal] = useState(demoArticles.length);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [view, setView] = useState<View>("journals");
   const [query, setQuery] = useState("");
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
@@ -348,10 +362,13 @@ function App() {
     loadCatalog()
       .then((data) => {
         if (!active) return;
-        setCatalogJournals(data.journals);
-        setCatalogArticles(data.articles);
+        setCatalogJournals(data.journals.items);
+        setJournalTotal(data.journals.total);
+        setCatalogArticles(data.articles.items);
+        setArticleTotal(data.articles.total);
         setPlatformStats(data.stats);
         setFacets(data.facets);
+        void loadJournalIndex().then((items) => { if (active) setJournalIndex(items); });
         setApiState("live");
       })
       .catch(() => {
@@ -367,39 +384,23 @@ function App() {
     .sort((left, right) => right.articles - left.articles)
     .slice(0, 6)
     .map((item) => item.name), [facets]);
-  const normalizedQuery = query.trim().toLocaleLowerCase("uz");
-
-  const filteredJournals = useMemo(() => catalogJournals.filter((journal) => {
-    const haystack = [journal.name, journal.publisher, journal.city, journal.issn, ...journal.fields]
-      .join(" ")
-      .toLocaleLowerCase("uz");
-    return (!normalizedQuery || haystack.includes(normalizedQuery))
-      && (fieldSet.size === 0 || journal.fields.some((item) => fieldSet.has(item)))
-      && (city === "Barcha shaharlar" || journal.city === city)
-      && (!oaiOnly || journal.oaiStatus !== "missing");
-  }), [catalogJournals, city, fieldSet, normalizedQuery, oaiOnly]);
-
-  const filteredArticles = useMemo(() => catalogArticles.filter((article) => {
-    const journal = catalogJournals.find((item) => item.id === article.journalId);
-    if (!journal) return false;
-    const haystack = [article.title, article.abstract, ...article.authors, ...article.keywords, journal.name]
-      .join(" ")
-      .toLocaleLowerCase("uz");
-    return (!normalizedQuery || haystack.includes(normalizedQuery))
-      && (fieldSet.size === 0 || article.fields.some((item) => fieldSet.has(item)))
-      && (city === "Barcha shaharlar" || journal.city === city)
-      && (!oaiOnly || journal.oaiStatus !== "missing");
-  }), [catalogArticles, catalogJournals, city, fieldSet, normalizedQuery, oaiOnly]);
+  // Qidiruv va filtrlar serverda qo'llanadi. Ilgari mijozda ham takroran
+  // filtrlanardi va bu server topgan natijalarni qirqib tashlardi.
+  const journalById = useMemo(
+    () => new Map(journalIndex.map((journal) => [journal.id, journal])),
+    [journalIndex],
+  );
+  const visibleJournals = catalogJournals;
+  const visibleArticles = catalogArticles;
+  const totalResults = view === "journals" ? journalTotal : articleTotal;
+  const shown = view === "journals" ? visibleJournals.length : visibleArticles.length;
 
   const resetFilters = () => {
     setQuery("");
     setSelectedFields([]);
     setCity("Barcha shaharlar");
     setOaiOnly(false);
-    setDisplayLimit(20);
   };
-
-  useEffect(() => { setDisplayLimit(20); }, [view, query, selectedFields, city, oaiOnly]);
 
   const activeCities = useMemo(
     () => (city === "Barcha shaharlar" ? [] : [city]),
@@ -419,12 +420,33 @@ function App() {
     skipFirstSearch.current = false;
     const timer = window.setTimeout(() => {
       const request = view === "articles"
-        ? searchArticles(query, selectedFields, activeCities).then(setCatalogArticles)
-        : searchJournals(query, selectedFields, activeCities).then(setCatalogJournals);
+        ? searchArticles(query, selectedFields, activeCities).then((page) => {
+            setCatalogArticles(page.items);
+            setArticleTotal(page.total);
+          })
+        : searchJournals(query, selectedFields, activeCities, 0, oaiOnly).then((page) => {
+            setCatalogJournals(page.items);
+            setJournalTotal(page.total);
+          });
       void request.catch(() => undefined);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeCities, apiState, query, selectedFields, view]);
+  }, [activeCities, apiState, oaiOnly, query, selectedFields, view]);
+
+  const loadMore = () => {
+    if (loadingMore || apiState !== "live") return;
+    setLoadingMore(true);
+    const request = view === "articles"
+      ? searchArticles(query, selectedFields, activeCities, visibleArticles.length).then((page) => {
+          setCatalogArticles((current) => [...current, ...page.items]);
+          setArticleTotal(page.total);
+        })
+      : searchJournals(query, selectedFields, activeCities, visibleJournals.length, oaiOnly).then((page) => {
+          setCatalogJournals((current) => [...current, ...page.items]);
+          setJournalTotal(page.total);
+        });
+    void request.catch(() => undefined).finally(() => setLoadingMore(false));
+  };
 
   if (adminOpen) {
     return <AdminDashboard onClose={() => setAdminOpen(false)} />;
@@ -569,22 +591,25 @@ function App() {
 
             <div className="results">
               <div className="results-head">
-                <p><strong>{view === "journals" ? filteredJournals.length : filteredArticles.length}</strong> ta natija</p>
+                <p><strong>{number.format(totalResults)}</strong> ta natija{shown < totalResults ? ` · ${number.format(shown)} ta ko‘rsatilmoqda` : ""}</p>
                 <span><Clock3 size={14} /> Eng yangi ma’lumotlar birinchi</span>
               </div>
               <div className={view === "journals" ? "journal-list" : "article-list"}>
                 {view === "journals"
-                  ? filteredJournals.slice(0, displayLimit).map((journal) => <JournalCard key={journal.id} journal={journal} onOpen={() => setSelectedJournal(journal)} />)
-                  : filteredArticles.slice(0, displayLimit).map((article) => {
-                      const journal = catalogJournals.find((item) => item.id === article.journalId);
+                  ? visibleJournals.map((journal) => <JournalCard key={journal.id} journal={journal} onOpen={() => setSelectedJournal(journal)} />)
+                  : visibleArticles.map((article) => {
+                      const journal = journalById.get(article.journalId);
                       return journal ? <ArticleCard key={article.id} article={article} journal={journal} /> : null;
                     })}
               </div>
-              {(view === "journals" ? filteredJournals.length : filteredArticles.length) === 0 && (
+              {shown === 0 && (
                 <div className="empty-state"><Search size={28} /><h3>Natija topilmadi</h3><p>Qidiruv yoki filtrlarni o‘zgartirib ko‘ring.</p><button onClick={resetFilters}>Filtrlarni tozalash</button></div>
               )}
-              {(view === "journals" ? filteredJournals.length : filteredArticles.length) > displayLimit && (
-                <button className="load-more" onClick={() => setDisplayLimit((value) => value + 20)}>Yana ko‘rsatish <ArrowRight size={17} /></button>
+              {shown > 0 && shown < totalResults && (
+                <button className="load-more" onClick={loadMore} disabled={loadingMore}>
+                  {loadingMore ? "Yuklanmoqda..." : `Yana ${number.format(Math.min(PAGE_SIZE, totalResults - shown))} ta ko‘rsatish`}
+                  <ArrowRight size={17} />
+                </button>
               )}
             </div>
           </div>
@@ -634,7 +659,7 @@ function App() {
         </div>
       </footer>
 
-      {selectedJournal && <JournalDrawer journal={selectedJournal} articles={catalogArticles} onClose={() => setSelectedJournal(null)} />}
+      {selectedJournal && <JournalDrawer journal={selectedJournal} onClose={() => setSelectedJournal(null)} />}
       {picker}
     </div>
   );
