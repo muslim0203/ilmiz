@@ -1,0 +1,79 @@
+export type Journal = {
+  id: string;
+  name: string;
+  shortName: string;
+  publisher: string;
+  city: string;
+  fields: string[];
+  issn: string;
+  eissn?: string;
+  languages: string[];
+  oakStatus: "active" | "review";
+  access: "open" | "mixed";
+  oaiStatus: "healthy" | "warning" | "missing";
+  oaiLastSync?: string;
+  oaiBaseUrl?: string;
+  articleCount: number;
+  issueCount: number;
+  founded?: number;
+  website: string;
+  description: string;
+  profile?: JournalProfile | null;
+  oakRecords?: OakRecord[];
+};
+
+export type JournalProfile = {
+  summary?: string | null;
+  aimsScope?: string | null;
+  peerReview?: string | null;
+  publicationFrequency?: string | null;
+  submissionLanguages: string[];
+  address?: string | null;
+  latestIssue?: string | null;
+  completenessScore: number;
+  sourceUrl?: string | null;
+  fetchedAt: string;
+  verifiedAt?: string | null;
+  contacts: Array<{ kind: string; label?: string | null; value: string; sourceUrl: string; fetchedAt: string }>;
+  editorialMembers: Array<{ name: string; role?: string | null; affiliation?: string | null; orcid?: string | null; email?: string | null; sourceUrl: string }>;
+  policies: Array<{ type: string; title: string; content?: string | null; url?: string | null; sourceUrl: string }>;
+  sections: Array<{ name: string; description?: string | null; sourceUrl: string }>;
+  indexingClaims: Array<{ provider: string; status: string; claimUrl?: string | null; sourceUrl: string; verifiedAt?: string | null }>;
+  links: Array<{ kind: string; label?: string | null; url: string; sourceUrl: string }>;
+  provenance: Array<{ fieldName: string; sourceUrl: string; confidence: number; verificationStatus: string; fetchedAt: string }>;
+};
+
+export type OakRecord = {
+  area?: string | null;
+  specialtyCode?: string | null;
+  status?: string | null;
+  decision?: string | null;
+  added?: string | null;
+  removed?: string | null;
+  sourceReference?: string | null;
+  sourceUrl?: string | null;
+};
+
+export type Article = {
+  id: string;
+  title: string;
+  authors: string[];
+  journalId: string;
+  journalName?: string;
+  publicationDate?: string | null;
+  year: number;
+  volume: string;
+  issue: string;
+  pages: string;
+  language: string;
+  fields: string[];
+  abstract: string;
+  keywords: string[];
+  doi?: string;
+  hasPdf: boolean;
+  pdfUrl?: string | null;
+  harvestedAt: string;
+  landingUrl?: string | null;
+  citations?: Record<"apa" | "mla" | "chicago" | "harvard" | "bibtex", string>;
+  isDemo?: boolean;
+};
