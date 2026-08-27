@@ -217,6 +217,10 @@ class HarvestSource(Base):
     deleted_record_policy: Mapped[str | None] = mapped_column(String(30), nullable=True)
     available_formats: Mapped[list[dict[str, str | None]]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    # Ayrim universitet saytlarida sertifikat muddati o‘tgan yoki hostga mos
+    # emas, OAI esa to‘g‘ri ishlaydi. Bayroq bazada saqlanadi, chunki audit va
+    # harvest alohida jarayonlarda ishlaydi.
+    insecure_ssl: Mapped[bool] = mapped_column(Boolean, default=False)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

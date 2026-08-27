@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import sys
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -51,17 +52,38 @@ def _text(element: ET.Element | None) -> str | None:
     return value or None
 
 
-def _request(base_url: str, params: dict[str, str], *, timeout: int, retries: int = 3) -> bytes:
+def _insecure_context() -> ssl.SSLContext:
+    """Sertifikat tekshiruvisiz kontekst.
+
+    O‘zbekistondagi bir qancha universitet saytlarida sertifikat muddati o‘tgan
+    yoki zanjiri to‘liq emas. Bu ochiq metama’lumot bo‘lgani uchun tekshiruvni
+    o‘chirish faqat aniq so‘ralganda (`verify_ssl=False`) qilinadi.
+    """
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def _request(
+    base_url: str,
+    params: dict[str, str],
+    *,
+    timeout: int,
+    retries: int = 3,
+    verify_ssl: bool = True,
+) -> bytes:
     separator = "&" if "?" in base_url else "?"
     url = f"{base_url}{separator}{urllib.parse.urlencode(params)}"
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/xml,text/xml", "Accept-Encoding": "identity", "User-Agent": USER_AGENT},
     )
+    context = None if verify_ssl else _insecure_context()
     last_error: Exception | None = None
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
                 return response.read()
         except urllib.error.HTTPError as error:
             last_error = error
@@ -99,8 +121,8 @@ def _root(payload: bytes) -> ET.Element:
     return root
 
 
-def identify(base_url: str, *, timeout: int = 30) -> dict[str, object]:
-    root = _root(_request(base_url, {"verb": "Identify"}, timeout=timeout))
+def identify(base_url: str, *, timeout: int = 30, verify_ssl: bool = True) -> dict[str, object]:
+    root = _root(_request(base_url, {"verb": "Identify"}, timeout=timeout, verify_ssl=verify_ssl))
     node = root.find("oai:Identify", NS)
     if node is None:
         raise OAIError("Identify element is missing")
@@ -117,8 +139,8 @@ def identify(base_url: str, *, timeout: int = 30) -> dict[str, object]:
     }
 
 
-def list_metadata_formats(base_url: str, *, timeout: int = 30) -> list[dict[str, str | None]]:
-    root = _root(_request(base_url, {"verb": "ListMetadataFormats"}, timeout=timeout))
+def list_metadata_formats(base_url: str, *, timeout: int = 30, verify_ssl: bool = True) -> list[dict[str, str | None]]:
+    root = _root(_request(base_url, {"verb": "ListMetadataFormats"}, timeout=timeout, verify_ssl=verify_ssl))
     return [
         {
             "prefix": _text(node.find("oai:metadataPrefix", NS)),
@@ -179,6 +201,7 @@ def harvest(
     set_spec: str | None = None,
     timeout: int = 30,
     page_limit: int | None = None,
+    verify_ssl: bool = True,
 ) -> Iterator[OAIRecord]:
     params = {"verb": "ListRecords", "metadataPrefix": metadata_prefix}
     if from_date:
@@ -191,7 +214,7 @@ def harvest(
     page = 0
     while True:
         try:
-            root = _root(_request(base_url, params, timeout=timeout))
+            root = _root(_request(base_url, params, timeout=timeout, verify_ssl=verify_ssl))
         except OAIError as error:
             if str(error).startswith("noRecordsMatch:"):
                 return

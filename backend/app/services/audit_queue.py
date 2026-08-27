@@ -131,7 +131,7 @@ def _process_claimed_job(job_id: int) -> str:
         errors: list[str] = []
         for candidate in discovered_endpoint_candidates(job.candidate_url):
             try:
-                audit_source(worker_db, job.journal, candidate, timeout=8)
+                audit_source(worker_db, job.journal, candidate, timeout=8, allow_insecure_ssl=True)
                 job = worker_db.get(AuditJob, job_id)
                 if job is None:
                     return "failed"

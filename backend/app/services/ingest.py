@@ -156,7 +156,19 @@ def _bibliographic_parts(metadata: dict[str, list[str]]) -> tuple[str | None, st
     )
 
 
-def audit_source(db: Session, journal: Journal, base_url: str, *, timeout: int = 30) -> HarvestSource:
+def _is_ssl_error(error: Exception) -> bool:
+    text = str(error).casefold()
+    return "certificate" in text or "ssl" in text
+
+
+def audit_source(
+    db: Session,
+    journal: Journal,
+    base_url: str,
+    *,
+    timeout: int = 30,
+    allow_insecure_ssl: bool = False,
+) -> HarvestSource:
     if urlparse(base_url).scheme not in {"http", "https"}:
         raise ValueError("OAI base URL http yoki https bo‘lishi kerak")
     # Bitta OAI endpoint bitta jurnalga tegishli. OJS'ning sayt darajasidagi
@@ -186,8 +198,20 @@ def audit_source(db: Session, journal: Journal, base_url: str, *, timeout: int =
         db.add(source)
     source.last_attempt_at = datetime.now(timezone.utc)
     try:
-        identity = identify(base_url, timeout=timeout)
-        formats = list_metadata_formats(base_url, timeout=timeout)
+        verify_ssl = not source.insecure_ssl
+        try:
+            identity = identify(base_url, timeout=timeout, verify_ssl=verify_ssl)
+        except OAIError as error:
+            # Sertifikat buzuq bo‘lsa, faqat shu host uchun tekshiruvni
+            # o‘chirib bir marta qayta urinamiz — universitet saytlarining
+            # bir qismida sertifikat muddati o‘tgan, OAI esa to‘g‘ri ishlaydi.
+            if not (allow_insecure_ssl and verify_ssl and _is_ssl_error(error)):
+                raise
+            logger.warning("Sertifikat tekshiruvisiz qayta urinilmoqda: %s", base_url)
+            source.insecure_ssl = True
+            verify_ssl = False
+            identity = identify(base_url, timeout=timeout, verify_ssl=False)
+        formats = list_metadata_formats(base_url, timeout=timeout, verify_ssl=verify_ssl)
         prefixes = {item["prefix"] for item in formats}
         if "oai_dc" not in prefixes:
             raise OAIError("Repository oai_dc formatini taqdim qilmaydi")
@@ -353,6 +377,7 @@ def ingest_source(db: Session, source: HarvestSource, *, from_date: str | None, 
             from_date=from_date,
             page_limit=page_limit,
             timeout=60,
+            verify_ssl=not source.insecure_ssl,
         ):
             run.records_seen += 1
             state = _upsert_record(db, source, record, cache)

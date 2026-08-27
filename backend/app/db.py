@@ -57,6 +57,12 @@ def init_db() -> None:
     if "publication_date" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE articles ADD COLUMN publication_date VARCHAR(80)"))
+    source_columns = {column["name"] for column in inspect(engine).get_columns("harvest_sources")}
+    if "insecure_ssl" not in source_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE harvest_sources ADD COLUMN insecure_ssl BOOLEAN DEFAULT 0 NOT NULL")
+            )
 
 
 def get_db() -> Generator[Session, None, None]:
