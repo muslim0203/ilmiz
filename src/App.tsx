@@ -29,6 +29,8 @@ import {
 import { PAGE_SIZE, loadCatalog, loadJournal, loadJournalArticles, loadJournalIndex, searchArticles, searchJournals, type Facets, type PlatformStats } from "./api";
 import FieldPicker from "./FieldPicker";
 import AdminDashboard from "./AdminDashboard";
+import AccountPanel from "./AccountPanel";
+import { loadCurrentUser, type AuthUser } from "./authApi";
 import { articles as demoArticles, journals as demoJournals } from "./data";
 import type { Article, Journal } from "./types";
 
@@ -341,6 +343,8 @@ function App() {
   const [platformStats, setPlatformStats] = useState<PlatformStats>({ journals: demoJournals.length, articles: demoArticles.length, healthySources: 0 });
   const [apiState, setApiState] = useState<"loading" | "live" | "fallback">("loading");
   const [adminOpen, setAdminOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [account, setAccount] = useState<AuthUser | null>(null);
   // Maqola kartasi va drawer jurnal obyektini talab qiladi, sahifada esa
   // atigi PAGE_SIZE ta jurnal bo'ladi — shuning uchun to'liq indeks alohida.
   const [journalIndex, setJournalIndex] = useState<Journal[]>(demoJournals);
@@ -376,6 +380,14 @@ function App() {
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void loadCurrentUser()
+      .then((value) => { if (active) setAccount(value); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [accountOpen]);
 
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
@@ -475,7 +487,8 @@ function App() {
           </nav>
           <div className="header-actions">
             <span className={`live-pill api-${apiState}`}><span /> {apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Demo rejim"}</span>
-            <button className="admin-button" onClick={() => setAdminOpen(true)}>Admin panel</button>
+            <button className="account-button" onClick={() => setAccountOpen(true)}>{account ? account.displayName.split(" ")[0] : "Kirish"}</button>
+              <button className="admin-button" onClick={() => setAdminOpen(true)}>Admin panel</button>
             <button className="mobile-menu" onClick={() => setMobileNav((value) => !value)} aria-label="Menyuni ochish"><Menu size={21} /></button>
           </div>
         </div>
@@ -661,6 +674,7 @@ function App() {
 
       {selectedJournal && <JournalDrawer journal={selectedJournal} onClose={() => setSelectedJournal(null)} />}
       {picker}
+      {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -7,7 +8,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import String, cast, distinct, func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from .db import DATABASE_URL, SessionLocal, get_db, init_db
 from .models import (
     Article,
+    User,
     AuditJob,
     HarvestRun,
     HarvestSource,
@@ -27,10 +29,13 @@ from .models import (
 )
 from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
+from .services import auth as auth_service
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
 from .services.profile_collector import collect_profile
 from .services.profile_queue import enqueue_profiles, process_profile_jobs, profile_queue_stats, profile_stats
+logger = logging.getLogger(__name__)
+
 from .services.taxonomy import FIELD_GROUPS, OTHER_GROUP, canonical_city, city_variants, field_group
 
 
@@ -706,3 +711,126 @@ def collect_journal_profile(input: ProfileCollectInput, db: Session = Depends(ge
 
 
 app.include_router(admin)
+
+
+# --- Foydalanuvchi autentifikatsiyasi -------------------------------------
+
+auth = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+class ProfileInput(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+    affiliation: str | None = Field(default=None, max_length=300)
+    scholar_url: HttpUrl | None = None
+
+
+def current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
+    return auth_service.user_for_token(db, request.cookies.get(auth_service.SESSION_COOKIE))
+
+
+def require_user(user: User | None = Depends(current_user)) -> User:
+    if user is None:
+        raise HTTPException(status_code=401, detail="Avval tizimga kiring.")
+    return user
+
+
+@auth.get("/providers")
+def auth_providers() -> dict[str, object]:
+    """Sozlangan provayderlar. Sozlanmagani tugma sifatida ko‘rsatilmaydi."""
+    return {
+        "providers": auth_service.available_providers(),
+        # Google Scholar OAuth provayderi emas — profil havolasi qo‘lda kiritiladi.
+        "scholarLinkOnly": True,
+    }
+
+
+@auth.get("/{provider}/start")
+def auth_start(provider: str, redirect_to: str | None = None, db: Session = Depends(get_db)):
+    try:
+        config = auth_service.provider_config(provider)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    if not config.configured:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{provider} sozlanmagan: CLIENT_ID va CLIENT_SECRET muhit o‘zgaruvchilari kerak.",
+        )
+    state = auth_service.create_state(db, provider, redirect_to)
+    return RedirectResponse(auth_service.authorize_url(provider, state), status_code=307)
+
+
+@auth.get("/{provider}/callback")
+def auth_callback(
+    provider: str,
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if error:
+        # Foydalanuvchi ruxsat bermadi — bu xato emas, oddiy bekor qilish.
+        return RedirectResponse(f"{auth_service.public_base_url()}/?auth=bekor", status_code=307)
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="code yoki state yetishmayapti")
+    redirect_to = auth_service.consume_state(db, provider, state)
+    if redirect_to is None and state:
+        # `consume_state` None qaytarsa, state yaroqsiz yoki muddati o‘tgan.
+        stored = db.scalar(select(auth_service.OAuthState).where(auth_service.OAuthState.state == state))
+        if stored is None:
+            raise HTTPException(status_code=400, detail="state yaroqsiz yoki muddati o‘tgan")
+    try:
+        identity = auth_service.exchange_code(provider, code)
+    except Exception as failure:  # noqa: BLE001 - provayder xatosi foydalanuvchiga ko‘rinmasin
+        logger.exception("OAuth almashuvi yiqildi: %s", provider)
+        raise HTTPException(status_code=502, detail="Provayder bilan almashuv amalga oshmadi") from failure
+
+    user = auth_service.upsert_user(db, provider, identity)
+    token = auth_service.create_session(db, user, user_agent=request.headers.get("user-agent"))
+    response = RedirectResponse(redirect_to or f"{auth_service.public_base_url()}/", status_code=307)
+    response.set_cookie(
+        auth_service.SESSION_COOKIE,
+        token,
+        max_age=int(auth_service.SESSION_TTL.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=auth_service.public_base_url().startswith("https://"),
+        path="/",
+    )
+    return response
+
+
+@auth.get("/me")
+def auth_me(user: User | None = Depends(current_user)) -> dict[str, object]:
+    return {"user": auth_service.user_payload(user) if user else None}
+
+
+@auth.patch("/me")
+def auth_update_me(
+    payload: ProfileInput,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    if payload.display_name is not None:
+        name = payload.display_name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Ism bo‘sh bo‘lmasin")
+        user.display_name = name
+    if payload.affiliation is not None:
+        user.affiliation = payload.affiliation.strip() or None
+    if payload.scholar_url is not None:
+        user.scholar_url = str(payload.scholar_url)
+    db.commit()
+    db.refresh(user)
+    return {"user": auth_service.user_payload(user)}
+
+
+@auth.post("/logout")
+def auth_logout(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+    auth_service.revoke_session(db, request.cookies.get(auth_service.SESSION_COOKIE))
+    response = JSONResponse({"status": "ok"})
+    response.delete_cookie(auth_service.SESSION_COOKIE, path="/")
+    return response
+
+
+app.include_router(auth)

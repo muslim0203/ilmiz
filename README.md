@@ -44,6 +44,34 @@ API hujjatlari: `http://127.0.0.1:8000/docs`
 
 Admin panel frontendning yuqori o‘ng qismidagi **Admin panel** tugmasi orqali ochiladi.
 
+### Foydalanuvchi profillari
+
+Tadqiqotchilar **ORCID** yoki **Google** orqali kiradi — parol saqlanmaydi.
+
+> Google Scholar’da OAuth ham, ochiq API ham yo‘q, shuning uchun u orqali
+> kirish texnik jihatdan mumkin emas. Foydalanuvchi o‘z Scholar profil
+> havolasini profilida qo‘lda ko‘rsatadi.
+
+```powershell
+$env:ILMIZ_PUBLIC_URL = "http://localhost:5173"
+$env:ORCID_CLIENT_ID = "<orcid.org/developer-tools dan>"
+$env:ORCID_CLIENT_SECRET = "<...>"
+$env:GOOGLE_CLIENT_ID = "<console.cloud.google.com dan>"
+$env:GOOGLE_CLIENT_SECRET = "<...>"
+```
+
+Redirect URI’lar: `<ILMIZ_PUBLIC_URL>/api/auth/orcid/callback` va
+`<ILMIZ_PUBLIC_URL>/api/auth/google/callback`.
+
+Sozlanmagan provayder kirish oynasida ko‘rsatilmaydi. Endpointlar:
+
+- `GET /api/auth/providers` — sozlangan provayderlar
+- `GET /api/auth/{provider}/start` — OAuth oqimini boshlash
+- `GET /api/auth/{provider}/callback` — sessiya cookie’sini o‘rnatadi
+- `GET /api/auth/me` — joriy foydalanuvchi (kirmagan bo‘lsa `null`)
+- `PATCH /api/auth/me` — ism, ish joyi, Scholar havolasi
+- `POST /api/auth/logout` — sessiyani bekor qiladi
+
 `/api/admin/*` endpointlari `ILMIZ_ADMIN_TOKEN` bilan himoyalangan. Token
 sozlanmagan bo‘lsa admin API butunlay yopiq (HTTP 503):
 

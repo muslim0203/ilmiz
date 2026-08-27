@@ -387,3 +387,66 @@ class ProfileJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     journal: Mapped[Journal] = relationship()
+
+
+class User(Base):
+    """Tashqi provayder (ORCID yoki Google) orqali kirgan foydalanuvchi.
+
+    Parol saqlanmaydi — autentifikatsiya butunlay provayder tomonida.
+    ORCID iD ilmiy muhitda barqaror identifikator, shuning uchun asosiy
+    bog'lovchi sifatida ishlatiladi.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="user_provider_uq"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20), index=True)
+    provider_subject: Mapped[str] = mapped_column(String(200))
+    orcid: Mapped[str | None] = mapped_column(String(19), nullable=True, unique=True, index=True)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(200))
+    affiliation: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Google Scholar'da OAuth yo'q, shuning uchun profil havolasi qo'lda kiritiladi.
+    scholar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class UserSession(Base):
+    """Serverda saqlanadigan sessiya.
+
+    Token o'rniga uning SHA-256 hash'i saqlanadi: baza o'qilib qolsa ham
+    tayyor sessiya tokenlari qo'lga tushmaydi.
+    """
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class OAuthState(Base):
+    """OAuth `state` qiymati — CSRF va qayta ishlatishga qarshi.
+
+    Bir marta ishlatiladi va callback'da o'chiriladi.
+    """
+
+    __tablename__ = "oauth_states"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    redirect_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

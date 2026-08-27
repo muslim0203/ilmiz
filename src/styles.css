@@ -415,6 +415,40 @@ footer { padding: 32px 0; border-top: 1px solid #d8ddd9; background: #ebece7; }
 .admin-message { display: flex; align-items: center; gap: 9px; margin: -12px 0 20px; padding: 12px 15px; border-radius: 5px; font-size: 11px; }
 .admin-message.success { background: #dfefe5; color: #266c48; }
 .admin-message.error { background: #f4e3df; color: #97483d; }
+/* Hisob paneli */
+.account-button { padding: 8px 15px; border: 1px solid #cfe0d4; border-radius: 6px; background: #eaf3ec; color: var(--green-900); font: 700 11px "Manrope", sans-serif; cursor: pointer; }
+.account-button:hover { background: #dcebe0; }
+.account-panel { display: flex; flex-direction: column; width: min(520px, 100%); max-height: 90vh; overflow-y: auto; border-radius: 10px; background: var(--paper); box-shadow: 0 24px 60px rgba(20,32,25,.28); }
+.account-note { margin: 0; padding: 18px 22px; color: #66726c; font-size: 12px; }
+.account-note.error { color: #97483d; }
+.account-note.success { color: #266c48; }
+.account-login { display: flex; flex-direction: column; align-items: center; gap: 13px; padding: 30px 26px 34px; text-align: center; }
+.account-login > svg { color: var(--green-700); }
+.account-login p { margin: 0; color: #56605a; font-size: 12px; line-height: 1.6; }
+.account-providers { display: flex; flex-direction: column; gap: 9px; width: 100%; margin-top: 6px; }
+.provider-button { padding: 12px; border: 1px solid #d4d9d5; border-radius: 7px; background: #fdfdfb; color: var(--ink); font: 700 12px "Manrope", sans-serif; cursor: pointer; }
+.provider-button:hover { border-color: var(--green-700); }
+.provider-orcid { border-color: #a6ce39; background: #f6fbe9; color: #4a6100; }
+.provider-google { border-color: #d2d7dc; }
+.account-hint { color: #87918c; font-size: 10px; line-height: 1.5; }
+.account-form { display: flex; flex-direction: column; gap: 14px; padding: 22px; }
+.account-identity { display: flex; align-items: center; gap: 13px; padding-bottom: 14px; border-bottom: 1px solid #e2e5e2; }
+.account-avatar { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 9px; background: var(--green-900); color: #fff; font: 800 14px "Manrope", sans-serif; }
+.account-identity > div { display: flex; flex-direction: column; gap: 2px; }
+.account-identity strong { color: var(--green-950); font: 750 14px "Manrope", sans-serif; }
+.account-identity span { color: #7c8781; font-size: 11px; }
+.account-provider { display: inline-flex; align-items: center; gap: 5px; color: var(--green-700) !important; }
+.account-orcid { display: flex; align-items: center; gap: 6px; margin: 0; color: #4a6100; font-size: 11px; }
+.account-orcid a { color: inherit; }
+.account-form label { display: flex; flex-direction: column; gap: 5px; }
+.account-form label > span { color: #66726c; font-size: 10px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; }
+.account-form input { padding: 10px 12px; border: 1px solid #d4d9d5; border-radius: 6px; background: #fdfdfb; color: var(--ink); font: 500 12px "Manrope", sans-serif; }
+.account-form input:focus { border-color: var(--green-700); outline: none; }
+.account-form label > small { color: #87918c; font-size: 10px; line-height: 1.5; }
+.account-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 6px; }
+.account-signout { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border: 1px solid #e4d3cf; border-radius: 6px; background: none; color: #97483d; font: 650 11px "Manrope", sans-serif; cursor: pointer; }
+.account-signout:hover { background: #f9efec; }
+
 /* Fan yo‘nalishi tanlagichi */
 .picker-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(23,32,27,.42); backdrop-filter: blur(3px); }
 .picker { display: flex; flex-direction: column; width: min(1180px, 100%); max-height: min(760px, 90vh); border-radius: 10px; background: var(--paper); box-shadow: 0 24px 60px rgba(20,32,25,.28); }
