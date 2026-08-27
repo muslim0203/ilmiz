@@ -15,6 +15,7 @@ export type Journal = {
   oaiBaseUrl?: string;
   articleCount: number;
   issueCount: number;
+  recentArticles?: number;
   founded?: number;
   website: string;
   description: string;

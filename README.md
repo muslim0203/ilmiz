@@ -195,6 +195,8 @@ API:
 
 - `GET /api/facets` — filtr uchun soha guruhlari va shaharlar (sanoqlari bilan)
 - `GET /api/journals?field=A&field=B&city=Toshkent` — ko‘p sohali filtr (OR)
+- `GET /api/journals?sort=activity` — standart tartib: so‘nggi yillarda eng
+  ko‘p maqola chiqargan jurnallardan boshlab. `sort=name` alifbo tartibi.
 - `GET /api/articles?field=A&city=Toshkent` — maqolalarni serverda filtrlash
 - `GET /api/journals/{slug}` — asosiy ma’lumot, boy profil va OAK reestr yozuvlari
 - `POST /api/admin/profiles/collect` — bitta jurnal profilini qayta yig‘ish

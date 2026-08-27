@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, R
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, HttpUrl
-from sqlalchemy import String, cast, distinct, func, or_, select
+from sqlalchemy import String, case, cast, distinct, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .db import DATABASE_URL, SessionLocal, get_db, init_db
@@ -219,30 +219,55 @@ _ISSUE_KEY = (
 )
 
 
-def journal_counts(db: Session, journal_ids: list[int] | None = None) -> dict[int, tuple[int, int]]:
+def activity_since_year() -> int:
+    """Faollik oynasining boshlanish yili.
+
+    Aniq sana bo‘yicha oxirgi 365 kun ishonchsiz: `publication_date` erkin
+    matn va formati manbadan manbaga farq qiladi. `publication_year` esa
+    butun bazada to‘ldirilgan, shuning uchun oyna yil bo‘yicha olinadi.
+    """
+    return datetime.utcnow().year - 1
+
+
+def recent_counts_subquery(since_year: int):
+    return (
+        select(Article.journal_id.label("journal_id"), func.count().label("recent"))
+        .where(Article.is_deleted.is_(False), Article.publication_year >= since_year)
+        .group_by(Article.journal_id)
+        .subquery()
+    )
+
+
+def journal_counts(db: Session, journal_ids: list[int] | None = None) -> dict[int, tuple[int, int, int]]:
     """Jurnal bo‘yicha maqola va son sonini bitta aggregate so‘rov bilan oladi.
 
     Ilgari `journal_payload` `journal.articles` ni o‘qir, `selectinload` esa
     barcha maqola obyektlarini xotiraga yuklardi — 493 ta jurnal uchun 100 mingdan
     ortiq ORM obyekti va ~3 soniya.
     """
+    since = activity_since_year()
     statement = (
-        select(Article.journal_id, func.count(), func.count(distinct(_ISSUE_KEY)))
+        select(
+            Article.journal_id,
+            func.count(),
+            func.count(distinct(_ISSUE_KEY)),
+            func.sum(case((Article.publication_year >= since, 1), else_=0)),
+        )
         .where(Article.is_deleted.is_(False))
         .group_by(Article.journal_id)
     )
     if journal_ids is not None:
         statement = statement.where(Article.journal_id.in_(journal_ids))
-    return {row[0]: (row[1], row[2]) for row in db.execute(statement)}
+    return {row[0]: (row[1], row[2], int(row[3] or 0)) for row in db.execute(statement)}
 
 
 def journal_payload(
     journal: Journal,
     *,
     include_profile: bool = False,
-    counts: tuple[int, int] = (0, 0),
+    counts: tuple[int, int, int] = (0, 0, 0),
 ) -> dict[str, object]:
-    article_count, issue_count = counts
+    article_count, issue_count, recent_count = counts
     payload: dict[str, object] = {
         "id": journal.slug,
         "name": journal.name,
@@ -259,6 +284,8 @@ def journal_payload(
         **source_status(journal),
         "articleCount": article_count,
         "issueCount": issue_count,
+        # So‘nggi faollik: jurnallarni standart tartiblash shu bo‘yicha.
+        "recentArticles": recent_count,
         "founded": journal.founded,
         "website": journal.website or "#",
         "description": journal.description or "",
@@ -412,11 +439,12 @@ def list_journals(
     city: list[str] = Query(default=[]),
     field: list[str] = Query(default=[]),
     oai_only: bool = False,
+    sort: str = Query(default="activity", pattern="^(activity|name)$"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
-    statement = select(Journal).options(selectinload(Journal.harvest_sources)).order_by(Journal.name)
+    statement = select(Journal).options(selectinload(Journal.harvest_sources))
     if q:
         needle = f"%{q.strip()}%"
         statement = statement.where(or_(Journal.name.ilike(needle), Journal.publisher.ilike(needle), Journal.issn.ilike(needle)))
@@ -427,10 +455,23 @@ def list_journals(
         statement = statement.where(Journal.id.in_(allowed))
     # Limit filtrlardan keyin qo‘llanadi — ilgari SQL limiti oldin ishlab,
     # soha filtri faqat birinchi N jurnal ichidan qidirardi.
+    # Umumiy son filtrlardan keyin, lekin tartiblash join'idan OLDIN hisoblanadi:
+    # join faqat tartib uchun kerak, sanoqqa ta'sir qilmaydi va uni sekinlashtiradi.
     response.headers["X-Total-Count"] = str(_total_of(db, statement))
+
+    if sort == "activity":
+        # Tartiblash sahifalash limitidan OLDIN, SQL tarafida bo'lishi shart —
+        # aks holda faqat joriy sahifa ichida tartiblanardi.
+        recent = recent_counts_subquery(activity_since_year())
+        statement = statement.outerjoin(recent, recent.c.journal_id == Journal.id).order_by(
+            func.coalesce(recent.c.recent, 0).desc(), Journal.name
+        )
+    else:
+        statement = statement.order_by(Journal.name)
+
     journals = list(db.scalars(statement.offset(offset).limit(limit)).unique())
     counts = journal_counts(db, [journal.id for journal in journals])
-    return [journal_payload(journal, counts=counts.get(journal.id, (0, 0))) for journal in journals]
+    return [journal_payload(journal, counts=counts.get(journal.id, (0, 0, 0))) for journal in journals]
 
 
 @app.get("/api/journals/{slug}")
@@ -451,7 +492,7 @@ def get_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
     if journal is None:
         raise HTTPException(status_code=404, detail="Jurnal topilmadi")
     counts = journal_counts(db, [journal.id])
-    payload = journal_payload(journal, include_profile=True, counts=counts.get(journal.id, (0, 0)))
+    payload = journal_payload(journal, include_profile=True, counts=counts.get(journal.id, (0, 0, 0)))
     latest_import = db.scalar(select(OakImportRun).where(OakImportRun.status == "succeeded").order_by(OakImportRun.started_at.desc()).limit(1))
     registry_statement = select(OakRegistryEntry).where(OakRegistryEntry.journal_id == journal.id).order_by(OakRegistryEntry.id)
     if latest_import is not None:

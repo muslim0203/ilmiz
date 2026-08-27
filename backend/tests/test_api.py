@@ -223,6 +223,35 @@ class ApiTest(unittest.TestCase):
         self.assertIn("profile", response.json())
         self.assertIn("oakRecords", response.json())
 
+    def test_journals_are_sorted_by_recent_activity_by_default(self) -> None:
+        """Standart tartib — so'nggi yillarda ko'p maqola chiqargan jurnallardan."""
+        journals = self.client.get("/api/journals", params={"limit": 500}).json()
+        recents = [item["recentArticles"] for item in journals]
+        self.assertEqual(recents, sorted(recents, reverse=True))
+
+    def test_name_sort_is_still_available(self) -> None:
+        journals = self.client.get("/api/journals", params={"limit": 500, "sort": "name"}).json()
+        names = [item["name"] for item in journals]
+        self.assertEqual(names, sorted(names))
+
+    def test_invalid_sort_is_rejected(self) -> None:
+        response = self.client.get("/api/journals", params={"sort": "tasodifiy"})
+        self.assertEqual(response.status_code, 422)
+
+    def test_sorting_happens_before_paging(self) -> None:
+        """Tartiblash SQL tarafida bo'lmasa, faqat sahifa ichida tartiblanardi."""
+        first_page = self.client.get("/api/journals", params={"limit": 2, "offset": 0}).json()
+        everything = self.client.get("/api/journals", params={"limit": 500}).json()
+        self.assertEqual(
+            [item["id"] for item in first_page],
+            [item["id"] for item in everything[:2]],
+        )
+
+    def test_recent_count_never_exceeds_total(self) -> None:
+        for item in self.client.get("/api/journals", params={"limit": 500}).json():
+            with self.subTest(journal=item["id"]):
+                self.assertLessEqual(item["recentArticles"], item["articleCount"])
+
     def test_articles_expose_total_count(self) -> None:
         """Frontend 500 ta bilan cheklangan edi; umumiy son header'dan keladi."""
         response = self.client.get("/api/articles", params={"limit": 1})

@@ -114,8 +114,8 @@ function JournalCard({ journal, onOpen }: { journal: Journal; onOpen: () => void
           <span>maqola</span>
         </div>
         <div>
-          <strong>{journal.issueCount || "—"}</strong>
-          <span>son</span>
+          <strong>{journal.recentArticles ? number.format(journal.recentArticles) : "—"}</strong>
+          <span>so‘nggi yillarda</span>
         </div>
         <button className="circle-button" onClick={onOpen} aria-label="Batafsil">
           <ArrowRight size={18} />
@@ -621,7 +621,7 @@ function App() {
             <div className="results">
               <div className="results-head">
                 <p><strong>{number.format(totalResults)}</strong> ta natija{shown < totalResults ? ` · ${number.format(shown)} ta ko‘rsatilmoqda` : ""}</p>
-                <span><Clock3 size={14} /> Eng yangi ma’lumotlar birinchi</span>
+                <span><Clock3 size={14} /> {view === "journals" ? "Eng faol jurnallar birinchi" : "Eng yangi maqolalar birinchi"}</span>
               </div>
               <div className={view === "journals" ? "journal-list" : "article-list"}>
                 {view === "journals"
