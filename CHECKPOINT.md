@@ -462,6 +462,29 @@ tegishli jurnalga qo‘lda biriktirib, `harvest-all` bilan yig‘ish. Xaritalash
 qo‘lda tasdiqlash kerak — avtomatik moslashtirish chegarani pasaytirishni
 talab qiladi, bu esa yana noto‘g‘ri biriktirishga olib keladi.
 
+## Bir endpointga ulangan ortiqcha manbalar tozalandi
+
+Dublikatlar birlashtirilgach ham 8 ta OAI URL bir nechta jurnalga biriktirilgan
+qoldi — bu dublikat emas, turli jurnallarga bir xil endpoint qo‘yilgani edi.
+`repository_name` bo‘yicha qaysi jurnal to‘g‘riligi qo‘lda tasdiqlanib, 17 ta
+ortiqcha manba o‘chirildi (592 maqola). Endi bir xil URL bir nechta jurnalda
+uchramaydi.
+
+**Nomlarni ko‘p tilli yozish.** `inscience.uz` da avtomatik ball ikkala jurnalga
+ham 0.00 bergan edi: repozitoriy nomi ruscha («Общество и инновации»), bizdagi
+nom esa o‘zbekcha-inglizcha («Жамият ва инновациялар / Society and
+innovations»). Ballga ishonilganda 5 628 ta to‘g‘ri maqola o‘chib ketardi.
+
+Yechim — nomga ruscha shaklni ham qo‘shish:
+`Жамият ва инновациялар / Общество и инновации / Society and innovations`.
+
+Tekshirilgan: normalizatsiya to‘qnashuvi yo‘q, repozitoriy nomi bilan moslik
+0.00 → 1.00, ruscha qidiruv jurnalni topadi, UI da nom kesilmaydi.
+
+Bu nuqtaviy yechim. Barqaror variant — jurnalga `alt_names` maydoni qo‘shib,
+OAI `repository_name` va tadqiq.uz `alternateName` qiymatlarini o‘sha yerda
+saqlash va moslashtirishda ishlatish. Shunda ko‘rsatiladigan nom o‘zgarmaydi.
+
 ## Ochiq muammolar (muhimlik tartibida)
 
 1. ~~Admin endpointlarida autentifikatsiya yo‘q~~ — tuzatildi
