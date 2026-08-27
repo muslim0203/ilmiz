@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from harvester.oai_harvester import OAIError, OAIRecord, harvest, identify, list_metadata_formats, metadata_from_xml
 
+from .search_text import article_search_text
+
 from ..db import SessionLocal
 from ..models import Article, HarvestRun, HarvestSource, Journal, SourceRecord
 
@@ -351,6 +353,7 @@ def _upsert_record(db: Session, source: HarvestSource, record: OAIRecord, cache:
     article.doi = doi
     article.landing_url = _landing_url(record.metadata)
     article.pdf_url = _pdf_url(record.metadata)
+    article.search_text = article_search_text(article.title, article.abstract, article.authors)
     article.is_deleted = False
     article.harvested_at = now
     article.updated_at = now
@@ -562,3 +565,21 @@ def drop_raw_metadata_column(*, vacuum: bool = True) -> dict[str, object]:
     if before and Path(before).exists():
         result["hajm_hozir_bayt"] = Path(before).stat().st_size
     return result
+
+def rebuild_search_index(db: Session, *, batch_size: int = 2000) -> dict[str, int]:
+    """Barcha maqolalar uchun `search_text` ni qayta hisoblaydi.
+
+    Normalizatsiya qoidasi o‘zgarganda yoki ustun yangi qo‘shilganda kerak.
+    """
+    rows = db.execute(
+        select(Article.id, Article.title, Article.abstract, Article.authors)
+    ).all()
+    updates = [
+        {"id": row[0], "search_text": article_search_text(row[1], row[2], row[3])}
+        for row in rows
+    ]
+    for start in range(0, len(updates), batch_size):
+        db.bulk_update_mappings(Article, updates[start : start + batch_size])
+        db.commit()
+    logger.info("Qidiruv indeksi qayta qurildi: %s maqola", len(updates))
+    return {"maqolalar": len(updates)}

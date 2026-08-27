@@ -194,6 +194,9 @@ class Article(Base):
     doi: Mapped[str | None] = mapped_column(String(300), nullable=True, unique=True, index=True)
     landing_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Sarlavha + annotatsiya + mualliflar, kichik harf va lotinlashtirilgan.
+    # Qidiruv shu ustunda ishlaydi: `ilike` va JSON cast'siz.
+    search_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     harvested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

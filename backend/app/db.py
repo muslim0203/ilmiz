@@ -70,6 +70,9 @@ def init_db() -> None:
     if "publication_date" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE articles ADD COLUMN publication_date VARCHAR(80)"))
+    if "search_text" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE articles ADD COLUMN search_text TEXT"))
     source_columns = {column["name"] for column in inspect(engine).get_columns("harvest_sources")}
     if "insecure_ssl" not in source_columns:
         with engine.begin() as connection:

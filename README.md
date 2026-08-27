@@ -198,6 +198,17 @@ API:
 - `GET /api/journals?sort=activity` — standart tartib: so‘nggi yillarda eng
   ko‘p maqola chiqargan jurnallardan boshlab. `sort=name` alifbo tartibi.
 - `GET /api/articles?field=A&city=Toshkent` — maqolalarni serverda filtrlash
+- `GET /api/articles?q=...` — sarlavha, annotatsiya va mualliflar bo‘yicha.
+  So‘rov so‘zlarga ajratiladi (tartib muhim emas) va kirill/lotin yozuvi
+  farqi hisobga olinadi: «Сулайманова» va «Sulaymanova» bir xil natija beradi.
+
+Qidiruv `articles.search_text` ustunida ishlaydi — u kichik harfga keltirilgan
+va lotinlashtirilgan sarlavha + annotatsiya + mualliflar. Normalizatsiya
+qoidasi o‘zgarsa qayta qurish kerak:
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py rebuild-search-index
+```
 - `GET /api/journals/{slug}` — asosiy ma’lumot, boy profil va OAK reestr yozuvlari
 - `POST /api/admin/profiles/collect` — bitta jurnal profilini qayta yig‘ish
 

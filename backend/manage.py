@@ -18,7 +18,14 @@ from backend.app.db import SessionLocal, init_db
 from backend.app.models import HarvestSource, Journal
 from backend.app.seed import seed_database
 from backend.app.services.audit_queue import enqueue_audits, process_audit_jobs, requeue_failed_audits
-from backend.app.services.ingest import audit_source, drop_raw_metadata_column, ingest_all_sources, ingest_source, reparse_bibliographic
+from backend.app.services.ingest import (
+    audit_source,
+    drop_raw_metadata_column,
+    ingest_all_sources,
+    ingest_source,
+    rebuild_search_index,
+    reparse_bibliographic,
+)
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
 from backend.app.services.merge_duplicates import merge_duplicates
@@ -108,6 +115,7 @@ def main() -> int:
     tadqiq.add_argument("--limit", type=int, help="Faqat birinchi N jurnal")
     tadqiq.add_argument("--fix-dead-sites", action="store_true",
                         help="OAI manbasi yiqilgan jurnallarda eskirgan sayt manzilini almashtirish")
+    subparsers.add_parser("rebuild-search-index")
     merge_dups = subparsers.add_parser("merge-duplicates")
     merge_dups.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
     merge_dups.add_argument("--limit", type=int, help="Faqat birinchi N guruh")
@@ -180,6 +188,9 @@ def main() -> int:
             )
             result["logFile"] = str(log_path)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "rebuild-search-index":
+            print(json.dumps(rebuild_search_index(db), ensure_ascii=False, indent=2))
             return 0
         if args.command == "merge-duplicates":
             result = merge_duplicates(db, dry_run=not args.apply, limit=args.limit)

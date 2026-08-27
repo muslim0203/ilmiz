@@ -30,6 +30,7 @@ from .models import (
 from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
 from .services import auth as auth_service
+from .services.search_text import query_words
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
 from .services.profile_collector import collect_profile
@@ -338,6 +339,47 @@ def stats(db: Session = Depends(get_db)) -> dict[str, int]:
     return {"journals": journals_count, "articles": articles_count, "healthySources": sources_count}
 
 
+# Kirilldan lotinga — qidiruv uchun. Muallif ismlari bir jurnalda kirillda,
+# boshqasida lotinda yoziladi; foydalanuvchi esa bittasini yozadi.
+_CYRILLIC_TO_LATIN = str.maketrans({
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "j",
+    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "x", "ц": "ts",
+    "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "", "ы": "i", "ь": "", "э": "e", "ю": "yu",
+    "я": "ya", "ғ": "g", "қ": "q", "ҳ": "h", "ў": "o",
+})
+
+
+def _search_forms(word: str) -> list[str]:
+    """So'zning qidiriladigan shakllari: o'zi va lotin transliteratsiyasi."""
+    forms = [word]
+    latin = word.casefold().translate(_CYRILLIC_TO_LATIN)
+    if latin and latin != word.casefold():
+        forms.append(latin)
+    return forms
+
+
+def text_search_filter(query: str, columns: list):
+    """Har bir so'z alohida qidiriladi va hammasi topilishi shart.
+
+    Ilgari butun so'rov bitta bo'lak sifatida qidirilardi. Mualliflar esa
+    familiya-birinchi saqlanadi ("Sharofiddinov, Kamoliddin"), shuning uchun
+    "Kamoliddin Sharofiddinov" hech qachon topilmasdi.
+    """
+    conditions = []
+    for word in query.split():
+        needle = word.strip()
+        if len(needle) < 2:
+            continue
+        variants = [
+            column.ilike(f"%{form}%")
+            for form in _search_forms(needle)
+            for column in columns
+        ]
+        conditions.append(or_(*variants))
+    return conditions
+
+
 def matching_journal_ids(db: Session, fields: list[str], cities: list[str]) -> set[int] | None:
     """Soha/shahar filtriga mos jurnal IDlari, filtr bo‘lmasa None.
 
@@ -446,8 +488,9 @@ def list_journals(
 ) -> list[dict[str, object]]:
     statement = select(Journal).options(selectinload(Journal.harvest_sources))
     if q:
-        needle = f"%{q.strip()}%"
-        statement = statement.where(or_(Journal.name.ilike(needle), Journal.publisher.ilike(needle), Journal.issn.ilike(needle)))
+        for condition in text_search_filter(q, [Journal.name, Journal.publisher, Journal.issn]):
+            statement = statement.where(condition)
+
     if oai_only:
         statement = statement.join(Journal.harvest_sources).distinct()
     allowed = matching_journal_ids(db, field, city)
@@ -531,8 +574,10 @@ def list_articles(
 ) -> list[dict[str, object]]:
     statement = select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False)).order_by(Article.publication_year.desc(), Article.id.desc())
     if q:
-        needle = f"%{q.strip()}%"
-        statement = statement.where(or_(Article.title.ilike(needle), Article.abstract.ilike(needle), cast(Article.authors, String).ilike(needle)))
+        # `search_text` allaqachon kichik harf va lotinlashtirilgan, shuning uchun
+        # `ilike` (ya'ni har qator uchun `lower()`) kerak emas.
+        for word in query_words(q):
+            statement = statement.where(Article.search_text.like(f"%{word}%"))
     if journal_slug:
         statement = statement.join(Article.journal).where(Journal.slug == journal_slug)
     if year:
