@@ -73,9 +73,15 @@ CYRILLIC_TO_LATIN = str.maketrans({
 APOSTROPHES = "ʻʼ'‘’`"
 # Bu so‘zlar deyarli har bir jurnal nomida uchraydi, shuning uchun o‘xshashlikni
 # sun’iy oshiradi.
+# Ruscha nomlar transliteratsiyadan keyin shu ko‘rinishga keladi. Ular deyarli
+# har bir nomda uchraydi: "ЖУРНАЛ ПРАВОВЫХ ИССЛЕДОВАНИЙ" va "Журнал социальных
+# исследований" ikkita umumiy token bo‘yicha mos kelib qolardi.
 STOPWORDS = frozenset({
     "ilmiy", "jurnal", "jurnali", "zhurnal", "xalqaro", "international", "journal",
     "nashri", "elektron", "the", "and", "for", "of",
+    "issledovaniy", "issledovaniya", "issledovaniyah", "innovatsii", "innovatsiya",
+    "mejdunarodniy", "mejdunarodnaya", "nauchno", "nauchniy",
+    "teoreticheskiy", "prakticheskiy", "seriya",
 })
 
 

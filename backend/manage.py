@@ -21,6 +21,7 @@ from backend.app.services.audit_queue import enqueue_audits, process_audit_jobs,
 from backend.app.services.ingest import audit_source, drop_raw_metadata_column, ingest_all_sources, ingest_source, reparse_bibliographic
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
+from backend.app.services.platform_split import split_platform_source
 from backend.app.services.tadqiq_import import import_tadqiq
 from backend.app.services.profile_queue import enqueue_profiles, process_profile_jobs, requeue_failed_profiles, requeue_incomplete_profiles
 
@@ -106,6 +107,9 @@ def main() -> int:
     tadqiq.add_argument("--limit", type=int, help="Faqat birinchi N jurnal")
     tadqiq.add_argument("--fix-dead-sites", action="store_true",
                         help="OAI manbasi yiqilgan jurnallarda eskirgan sayt manzilini almashtirish")
+    split_platform = subparsers.add_parser("split-platform-source")
+    split_platform.add_argument("source_id", type=int)
+    split_platform.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
     drop_raw = subparsers.add_parser("drop-raw-metadata")
     drop_raw.add_argument("--no-vacuum", action="store_true", help="Ustunni o‘chiradi, lekin faylni siqmaydi")
     reparse = subparsers.add_parser("reparse-bibliographic")
@@ -171,6 +175,10 @@ def main() -> int:
                 fix_dead_sites=args.fix_dead_sites,
             )
             result["logFile"] = str(log_path)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "split-platform-source":
+            result = split_platform_source(db, args.source_id, dry_run=not args.apply)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "drop-raw-metadata":
