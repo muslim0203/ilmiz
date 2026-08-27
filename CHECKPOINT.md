@@ -424,7 +424,7 @@ To‘g‘riligi 493 jurnalning hammasida SQL ground truth bilan solishtirilgan:
 
 ## Keyingi sessiyada davom ettirish
 
-1. **Dublikat jurnallarni birlashtirish** — 25 guruh, 51 jurnal (yuqoriga qarang).
+1. ~~Dublikat jurnallarni birlashtirish~~ — bajarildi (25 guruh, 493 → 467 jurnal).
 2. ~~Frontendda pagination~~ — bajarildi (server tarafda, 50 tadan).
 3. 115 ta takroriy `base_url` — bir OAI endpoint ikki marta yig‘ilmoqda.
 3. Sohalarni yanada chuqurlashtirish (ASJC uslubidagi ichki kategoriyalar) —
