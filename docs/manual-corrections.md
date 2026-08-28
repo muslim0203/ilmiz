@@ -1,0 +1,76 @@
+# Qo'lda kiritilgan tuzatishlar
+
+Bu yerda **yuqori manba (OAK reestri, tadqiq.uz) xato bo'lgani uchun** qo'lda
+tuzatilgan yozuvlar qayd etiladi. Ularni "manbaga moslash" uchun orqaga
+qaytarmang — manbaning o'zi noto'g'ri.
+
+`oak_registry.py` `if not journal.website` shartini tekshiradi, shuning uchun
+reestr qayta import qilinganda bu tuzatishlar saqlanib qoladi.
+
+---
+
+## Infolib (#444) — 2026-08-28
+
+**Muammo.** OAK rasmiy reestrida Infolib uchun havola sifatida
+`https://lingvospektr.uz/index.php/lngsp/index` ko'rsatilgan. Bu Lingvospektr
+jurnalining manzili. tadqiq.uz ham shu xatoni takrorlagan
+(`tadqiq.uz/mahalliy-oak-jurnallar/infolib`). Natijada Infolib yozuvi
+butunlay Lingvospektr ma'lumotlari bilan to'lgan edi: sayt, ISSN, uchala OAI
+manbasi, profil, aloqa ma'lumotlari va 1778 maqola — barchasi
+Lingvospektr'niki, `#445` dagi maqolalar bilan 100% ustma-ust
+(bir xil `oai:ojs2.lingvospektr.uz:article/N` identifikatorlari).
+
+**Tekshiruv.**
+
+| Dalil | Natija |
+| --- | --- |
+| `portal.issn.org` ISSN 3060-4958 | Lingvospektr, sayt `.../lngsp/about` |
+| `portal.issn.org` ISSN 2181-8207 | Infolib (bosma), bog'langan e-ISSN 3093-902X |
+| `.../lngsp/oai?verb=Identify` | `repositoryName` = The Lingua Spectrum |
+| `.../lngsap/index` | 404 |
+| `einfolib.uz` | "INFOLIB - Ахборот-кутубхона журнали", Milliy kutubxona |
+
+**Tuzatildi.**
+
+- `#444 Infolib` — 1778 maqola, 3 OAI manba, profil/aloqa/siyosat/havolalar
+  o'chirildi. Sayt `https://einfolib.uz/`, ISSN `2181-8207`,
+  e-ISSN `3093-902X`. einfolib.uz WordPress'da, OAI endpointi yo'q, shuning
+  uchun jurnal yig'ilmaydi va 0 maqola bilan qoladi.
+- `#445 Lingvospektr` — sayt o'lik `lngsap` yo'lidan `lngsp` ga o'tkazildi,
+  yagona OAI manbasi sayt darajasidagi `/index.php/index/oai` dan jurnalga xos
+  `/index.php/lngsp/oai` ga qaratildi. OAI identifikatorlari endpointga bog'liq
+  emas, shuning uchun mavjud yozuvlar buzilmadi.
+
+`oak_registry_entries` dagi #2421 yozuvi **ataylab tegilmadi** — u OAK nima
+e'lon qilganini qayd etuvchi tarixiy iz.
+
+---
+
+## Tekshirilmagan shubhali juftlar
+
+Infolib bilan bir xil naqsh: juftning biri jurnalga xos OAI yo'lini, ikkinchisi
+sayt darajasidagi `/index.php/index/oai` ni ishlatgan va ikkalasi bir xil
+maqolalarni olgan. Har biri alohida tekshiruvni talab qiladi — ba'zilari
+haqiqatan ikki xil jurnal (Infolib kabi), ba'zilari esa bitta jurnalning ikki
+tildagi nomi bo'lishi mumkin (u holda birlashtirish kerak).
+
+| Juft | Umumiy maqola | Izoh |
+| --- | --- | --- |
+| #458 Спорт илм-фанининг... ↔ #156 Фан спортга | 287 / 287 | bir xil ISSN 3030-3087, nashriyotlar har xil |
+| #263 Наука и инновационные... ↔ #453 Илм-фан ва технологиялар | 98 / 98 | bir xil ISSN 0009-0003, nashriyotlar har xil |
+| #457 Фан ва жамият ↔ #39 Ilim ha'm ja'miyet | 50 / 50 | bir nashriyot — ehtimol bitta jurnalning ikki nomi |
+| #27 Қорақалпоғистон... ↔ #89 Қарақалпақ ДУ хабаршысы | 28 / 28 | bir nashriyot, bir xil ISSN 2010-9075 |
+| #5 Agro Inform ↔ #213 AGRO BIZNES INFORM | 6 / 6 | nashriyotlar har xil |
+
+Aniqlash usuli: bir xil hostdan yig'ilgan va sarlavhalari to'liq ustma-ust
+tushgan jurnal juftlarini qidirish. **Faqat OAI identifikatorini taqqoslash
+yaramaydi** — sozlanmagan OJS o'rnatmalari hammasi `oai:ojs.pkp.sfu.ca:article/N`
+qaytaradi, shuning uchun yuzlab bog'liq bo'lmagan jurnal tasodifan bir xil
+identifikatorga ega.
+
+---
+
+## Ma'lum muammolar
+
+- `source_records` da ~8300 yetim yozuv bor (maqolasi o'chirilgan, yozuvi
+  qolgan). Ilgarigi tozalashlardan qolgan, hozircha zarar bermaydi.
