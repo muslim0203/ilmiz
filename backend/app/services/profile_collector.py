@@ -286,11 +286,52 @@ def fetch_pages(website: str, timeout: float = 20.0) -> dict[str, ParsedPage]:
     return pages
 
 
+# Sahifadan matn olganda footer skripti va brauzer ogohlantirishlari ham
+# qo'shilib ketadi. Haqiqiy matn odatda boshida turadi, shuning uchun shu
+# belgilardan keyingi hamma narsani kesamiz.
+BOILERPLATE_RE = re.compile(
+    r"(?i)"
+    r"\$\(function|\$\(document|var\s+\w+\s*=|JSON\.parse|<script|"
+    r"\.addClass\(|\.removeClass\(|"
+    r"your browser does not support html5|"
+    r"all rights reserved|copyright\s*©|©\s*\d{4}|"
+    r"javascript[^.]{0,60}(disabled|enable|o.chir|yoqing|qo.llab)|"
+    r"(disabled|enable)[^.]{0,60}javascript"
+)
+# Kesilgandan keyin faqat menyu qolsa, bu ham tavsif emas.
+NAVIGATION_RE = re.compile(
+    r"(?i)"
+    r"search articles for\s+advanced filters|"
+    r"размер шрифта|яркий контраст|клавиатурная навигация|"
+    r"версия для слабовидящих|"
+    r"sayt xaritasi|virtual qabulxona|"
+    r"asosiy kontentga o.tish|асосий контентга ўтиш"
+)
+BREADCRUMB_RE = re.compile(r"^\s*(home|bosh sahifa|главная|асосий саҳифа)\s*/?\s*", re.I)
+# Bundan qisqa matn tavsif emas — odatda sarlavhaning o'zi.
+MIN_PROSE_LENGTH = 60
+
+
+def strip_boilerplate(value: str) -> str:
+    match = BOILERPLATE_RE.search(value)
+    if match:
+        value = value[: match.start()]
+    return BREADCRUMB_RE.sub("", value).strip()
+
+
 def compact(value: str | None, limit: int = 4000) -> str | None:
     if not value:
         return None
-    value = clean_text(value)
+    value = strip_boilerplate(clean_text(value))
     return value[:limit] if value else None
+
+
+def prose(value: str | None, limit: int = 4000) -> str | None:
+    """`compact`, lekin natija tavsif bo'lolmasa `None` qaytaradi."""
+    text = compact(value, limit)
+    if not text or len(text) < MIN_PROSE_LENGTH or NAVIGATION_RE.search(text):
+        return None
+    return text
 
 
 def best_summary(page: ParsedPage | None) -> str | None:
@@ -298,8 +339,8 @@ def best_summary(page: ParsedPage | None) -> str | None:
         return None
     useful = [p for p in page.paragraphs if len(p) >= 80]
     if useful:
-        return compact(max(useful, key=len), 1800)
-    return compact(page.main_text, 1800)
+        return prose(max(useful, key=len), 1800)
+    return prose(page.main_text, 1800)
 
 
 def extract_editorial_members(page: ParsedPage | None) -> list[dict[str, str | None]]:
@@ -501,9 +542,8 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
     db.add_all([EditorialMember(journal=journal, source_url=editorial.url, fetched_at=now, **member) for member in members] if editorial else [])
 
     policies: list[JournalPolicy] = []
-    if submissions and submissions.main_text:
-        policies.append(JournalPolicy(journal=journal, policy_type="submissions", title="Mualliflar uchun talablar", content=compact(submissions.main_text, 5000), url=submissions.url, source_url=submissions.url, fetched_at=now))
     policy_pages = {
+        "submissions": ("Mualliflar uchun talablar", submissions),
         "peer_review": ("Taqriz siyosati", pages.get("peer_review")),
         "publication_ethics": ("Nashr etikasi", pages.get("ethics")),
         "privacy": ("Maxfiylik bayonoti", pages.get("privacy")),
@@ -511,8 +551,14 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
         "author_guidelines": ("Mualliflar uchun qoida", pages.get("authors")),
     }
     for policy_type, (title, page) in policy_pages.items():
-        if page and page.main_text:
-            policies.append(JournalPolicy(journal=journal, policy_type=policy_type, title=title, content=compact(page.main_text, 5000), url=page.url, source_url=page.url, fetched_at=now))
+        if not page:
+            continue
+        # Sahifada faqat menyu bo'lsa `prose` `None` qaytaradi — bo'sh
+        # siyosat yozuvini saqlashdan ko'ra umuman saqlamagan ma'qul.
+        content = prose(page.main_text, 5000)
+        if not content:
+            continue
+        policies.append(JournalPolicy(journal=journal, policy_type=policy_type, title=title, content=content, url=page.url, source_url=page.url, fetched_at=now))
     db.add_all(policies)
 
     section_names: list[str] = []

@@ -52,6 +52,21 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+// OAK importi har bir jurnalga shu bir xil matnni yozgan — bu tavsif emas.
+const OAK_PLACEHOLDER = "OAK rasmiy elektron reestridan import qilingan jurnal.";
+
+/** Tahrirlangan tavsif jurnal saytidan yig'ilganidan ustun.
+ *
+ * Ilgari teskari edi: scraper yig'gan matn birinchi ko'rsatilardi va u
+ * ba'zan sayt navigatsiyasi yoki hatto sahifa kodi bo'lib chiqardi. */
+function aboutText(description?: string | null, summary?: string | null): string {
+  const curated = description?.trim();
+  if (curated && curated !== OAK_PLACEHOLDER) return curated;
+  const scraped = summary?.trim();
+  if (scraped) return scraped;
+  return "Jurnal tavsifi hali yig‘ilmagan.";
+}
+
 // Maqola qabul qilish uchun yagona Telegram aloqa nuqtasi.
 const SUBMIT_TELEGRAM_URL = "https://t.me/zarifjon0203";
 
@@ -153,7 +168,7 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold tracking-tight">Jurnal haqida</h3>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              {profile?.summary || detail.description || "Jurnal tavsifi hali yig‘ilmagan."}
+              {aboutText(detail.description, profile?.summary)}
             </p>
             {profile?.sourceUrl && (
               <Button variant="link" size="sm" className="h-auto p-0" asChild>

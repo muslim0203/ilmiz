@@ -1,6 +1,12 @@
 import unittest
 
-from backend.app.services.profile_collector import extract_editorial_members, parse_page
+from backend.app.services.profile_collector import (
+    compact,
+    extract_editorial_members,
+    parse_page,
+    prose,
+    strip_boilerplate,
+)
 
 
 class ProfileCollectorTest(unittest.TestCase):
@@ -31,6 +37,55 @@ class ProfileCollectorTest(unittest.TestCase):
         self.assertEqual(members[0]["name"], "Рустамов Сирожиддин Ташниязович")
         self.assertEqual(members[0]["role"].lower(), "главный редактор")
 
+
+class BoilerplateTest(unittest.TestCase):
+    """Sahifadan yig'ilgan matndan sayt axlatini ajratish."""
+
+    def test_cuts_at_inline_script(self) -> None:
+        text = (
+            "Jurnal tabiiy fanlar bo'yicha maqolalar chop etadi va yiliga to'rt marta "
+            'chiqadi. $(function () { $(".header").removeClass("bg-dark"); });'
+        )
+        self.assertEqual(
+            strip_boilerplate(text),
+            "Jurnal tabiiy fanlar bo'yicha maqolalar chop etadi va yiliga to'rt marta chiqadi.",
+        )
+
+    def test_cuts_at_copyright_footer(self) -> None:
+        kept = "Nashr ijtimoiy va gumanitar fanlar yo'nalishida ilmiy maqolalarni qabul qiladi."
+        self.assertEqual(strip_boilerplate(kept + " Copyright © 2026 Journal"), kept)
+
+    def test_drops_breadcrumb_prefix(self) -> None:
+        self.assertEqual(strip_boilerplate("Главная / О журнале"), "О журнале")
+
+    def test_keeps_ordinary_prose_untouched(self) -> None:
+        text = "Jurnal 2013-yilda tashkil etilgan va yiliga to'rt marta nashr qilinadi."
+        self.assertEqual(strip_boilerplate(text), text)
+
+    def test_prose_rejects_javascript_warning(self) -> None:
+        self.assertIsNone(prose("You need to enable JavaScript to run this app."))
+
+    def test_prose_rejects_bare_heading(self) -> None:
+        self.assertIsNone(prose("Home / About the Journal About the Journal"))
+
+    def test_prose_rejects_navigation_dump(self) -> None:
+        self.assertIsNone(
+            prose(
+                "Уменьшить размер шрифта Увеличить размер шрифта "
+                "Клавиатурная навигация Переключить подчеркивание"
+            )
+        )
+
+    def test_prose_keeps_real_description(self) -> None:
+        text = (
+            "Jurnal ikki asosiy yo'nalishda ilmiy maqolalar chop etadi: "
+            "tabiiy fanlar va qishloq xo'jaligi fanlari."
+        )
+        self.assertEqual(prose(text), text)
+
+    def test_compact_keeps_short_fields(self) -> None:
+        """`prose` dan farqli, `compact` qisqa maydonlarni kesib tashlamaydi."""
+        self.assertEqual(compact("Yiliga 4 marta", 200), "Yiliga 4 marta")
 
 if __name__ == "__main__":
     unittest.main()
