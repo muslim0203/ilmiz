@@ -69,26 +69,58 @@ def admin_token() -> str:
     return os.getenv("ILMIZ_ADMIN_TOKEN", "").strip()
 
 
-def require_admin(
-    authorization: str | None = Header(default=None),
-    x_admin_token: str | None = Header(default=None),
-) -> None:
-    """Barcha `/api/admin/*` so‘rovlarini himoyalaydi.
-
-    Token sozlanmagan bo‘lsa hamma narsa rad etiladi — ilgari bu endpointlar
-    butunlay ochiq edi, shuning uchun standart holat yopiq bo‘lishi shart.
-    """
+def _token_matches(authorization: str | None, x_admin_token: str | None) -> bool:
     expected = admin_token()
     if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail="Admin API o‘chirilgan: ILMIZ_ADMIN_TOKEN muhit o‘zgaruvchisi sozlanmagan.",
-        )
+        return False
     provided = x_admin_token
     if not provided and authorization and authorization.lower().startswith("bearer "):
         provided = authorization[7:]
-    if not provided or not secrets.compare_digest(provided.strip(), expected):
-        raise HTTPException(status_code=401, detail="Admin tokeni noto‘g‘ri yoki berilmagan.")
+    return bool(provided) and secrets.compare_digest(provided.strip(), expected)
+
+
+def check_admin_access(
+    db: Session,
+    *,
+    authorization: str | None,
+    x_admin_token: str | None,
+    session_token: str | None,
+) -> None:
+    """Barcha `/api/admin/*` so‘rovlarini himoyalaydi.
+
+    Ikki yo‘l bor: `is_admin` bo‘lgan foydalanuvchining sessiyasi yoki
+    `ILMIZ_ADMIN_TOKEN`. Token birinchi adminni tayinlash uchun zaxira yo‘l
+    bo‘lib qoladi — hech bir admin yo‘q holatda tizimga kirib bo‘lmay
+    qolmasligi uchun.
+    """
+    user = auth_service.user_for_token(db, session_token)
+    if user is not None and user.is_admin:
+        return
+    if _token_matches(authorization, x_admin_token):
+        return
+    if not admin_token() and not auth_service.any_admin_exists(db):
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Admin API o‘chirilgan: birorta admin foydalanuvchi yo‘q va "
+                "ILMIZ_ADMIN_TOKEN sozlanmagan."
+            ),
+        )
+    raise HTTPException(status_code=401, detail="Admin huquqi yo‘q.")
+
+
+def require_admin(
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+    x_admin_token: str | None = Header(default=None),
+) -> None:
+    check_admin_access(
+        db,
+        authorization=authorization,
+        x_admin_token=x_admin_token,
+        session_token=request.cookies.get(auth_service.SESSION_COOKIE),
+    )
 
 
 @app.middleware("http")
@@ -102,7 +134,13 @@ async def admin_guard(request: Request, call_next):
     """
     if request.url.path.startswith("/api/admin") and request.method != "OPTIONS":
         try:
-            require_admin(request.headers.get("authorization"), request.headers.get("x-admin-token"))
+            with SessionLocal() as db:
+                check_admin_access(
+                    db,
+                    authorization=request.headers.get("authorization"),
+                    x_admin_token=request.headers.get("x-admin-token"),
+                    session_token=request.cookies.get(auth_service.SESSION_COOKIE),
+                )
         except HTTPException as error:
             return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
     return await call_next(request)

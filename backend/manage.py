@@ -28,6 +28,7 @@ from backend.app.services.ingest import (
 )
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
+from backend.app.services.auth import grant_admin
 from backend.app.services.merge_duplicates import merge_duplicates
 from backend.app.services.platform_split import split_platform_source
 from backend.app.services.tadqiq_import import import_tadqiq
@@ -115,6 +116,9 @@ def main() -> int:
     tadqiq.add_argument("--limit", type=int, help="Faqat birinchi N jurnal")
     tadqiq.add_argument("--fix-dead-sites", action="store_true",
                         help="OAI manbasi yiqilgan jurnallarda eskirgan sayt manzilini almashtirish")
+    admin_cmd = subparsers.add_parser("grant-admin")
+    admin_cmd.add_argument("identifier", help="ORCID iD yoki e-pochta")
+    admin_cmd.add_argument("--revoke", action="store_true", help="Huquqni olib tashlash")
     subparsers.add_parser("rebuild-search-index")
     merge_dups = subparsers.add_parser("merge-duplicates")
     merge_dups.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
@@ -188,6 +192,16 @@ def main() -> int:
             )
             result["logFile"] = str(log_path)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "grant-admin":
+            user = grant_admin(db, args.identifier, revoke=args.revoke)
+            if user is None:
+                print(json.dumps({"xato": f"foydalanuvchi topilmadi: {args.identifier}"}, ensure_ascii=False))
+                return 1
+            print(json.dumps({
+                "id": user.id, "ism": user.display_name, "orcid": user.orcid,
+                "email": user.email, "is_admin": user.is_admin,
+            }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "rebuild-search-index":
             print(json.dumps(rebuild_search_index(db), ensure_ascii=False, indent=2))

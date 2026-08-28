@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import OAuthState, User, UserSession
@@ -272,10 +272,27 @@ def revoke_session(db: Session, token: str | None) -> bool:
     return True
 
 
+def any_admin_exists(db: Session) -> bool:
+    return db.scalar(select(User.id).where(User.is_admin.is_(True), User.is_active.is_(True))) is not None
+
+
+def grant_admin(db: Session, identifier: str, *, revoke: bool = False) -> User | None:
+    """ORCID iD yoki e-pochta bo'yicha admin huquqini beradi/oladi."""
+    needle = identifier.strip()
+    user = db.scalar(select(User).where(or_(User.orcid == needle, User.email == needle)))
+    if user is None:
+        return None
+    user.is_admin = not revoke
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def user_payload(user: User) -> dict[str, object]:
     return {
         "id": user.id,
         "provider": user.provider,
+        "isAdmin": user.is_admin,
         "displayName": user.display_name,
         "email": user.email,
         "orcid": user.orcid,

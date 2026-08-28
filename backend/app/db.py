@@ -73,6 +73,10 @@ def init_db() -> None:
     if "search_text" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE articles ADD COLUMN search_text TEXT"))
+    user_columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    if "is_admin" not in user_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0 NOT NULL"))
     source_columns = {column["name"] for column in inspect(engine).get_columns("harvest_sources")}
     if "insecure_ssl" not in source_columns:
         with engine.begin() as connection:

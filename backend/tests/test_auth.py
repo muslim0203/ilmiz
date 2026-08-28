@@ -15,6 +15,8 @@ from backend.app.main import app  # noqa: E402
 from backend.app.models import OAuthState, User, UserSession  # noqa: E402
 from backend.app.services import auth as auth_service  # noqa: E402
 
+ADMIN_TOKEN = "test-admin-token"
+
 PROVIDER_ENV = {
     "ORCID_CLIENT_ID": "test-orcid-id",
     "ORCID_CLIENT_SECRET": "test-orcid-secret",
@@ -199,6 +201,72 @@ class AuthTest(unittest.TestCase):
         self.client.cookies.set(auth_service.SESSION_COOKIE, token)
         response = self.client.patch("/api/auth/me", json={"display_name": "   "})
         self.assertEqual(response.status_code, 422)
+
+    # --- admin huquqi ---------------------------------------------------
+
+    def admin_session(self, subject: str) -> str:
+        from backend.app.models import User as UserModel
+
+        user = self.make_user(subject=subject)
+        with SessionLocal() as db:
+            row = db.get(UserModel, user.id)
+            row.is_admin = True
+            db.commit()
+            return auth_service.create_session(db, row)
+
+    def test_plain_user_cannot_reach_admin_api(self) -> None:
+        os.environ["ILMIZ_ADMIN_TOKEN"] = ADMIN_TOKEN
+        try:
+            user = self.make_user(subject="0000-0004-0000-0001")
+            with SessionLocal() as db:
+                token = auth_service.create_session(db, db.get(User, user.id))
+            self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+            self.assertEqual(self.client.get("/api/admin/dashboard").status_code, 401)
+        finally:
+            os.environ.pop("ILMIZ_ADMIN_TOKEN", None)
+
+    def test_admin_user_reaches_admin_api_without_token(self) -> None:
+        """Asosiy maqsad: admin o'z hisobi bilan kiradi, alohida token kerak emas."""
+        for key in PROVIDER_ENV:
+            os.environ.pop(key, None)
+        os.environ.pop("ILMIZ_ADMIN_TOKEN", None)
+        self.client.cookies.set(auth_service.SESSION_COOKIE, self.admin_session("0000-0004-0000-0002"))
+        response = self.client.get("/api/admin/dashboard")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("journals", response.json())
+
+    def test_token_still_works_as_a_fallback(self) -> None:
+        """Birinchi adminni tayinlash uchun token yo'li ochiq qolishi kerak."""
+        os.environ["ILMIZ_ADMIN_TOKEN"] = ADMIN_TOKEN
+        try:
+            self.assertEqual(
+                self.client.get("/api/admin/dashboard", headers={"X-Admin-Token": ADMIN_TOKEN}).status_code,
+                200,
+            )
+        finally:
+            os.environ.pop("ILMIZ_ADMIN_TOKEN", None)
+
+    def test_me_reports_admin_flag(self) -> None:
+        self.client.cookies.set(auth_service.SESSION_COOKIE, self.admin_session("0000-0004-0000-0003"))
+        self.assertTrue(self.client.get("/api/auth/me").json()["user"]["isAdmin"])
+
+    def test_me_reports_non_admin(self) -> None:
+        user = self.make_user(subject="0000-0004-0000-0004")
+        with SessionLocal() as db:
+            token = auth_service.create_session(db, db.get(User, user.id))
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        self.assertFalse(self.client.get("/api/auth/me").json()["user"]["isAdmin"])
+
+    def test_grant_and_revoke_admin(self) -> None:
+        user = self.make_user(subject="0000-0004-0000-0005")
+        with SessionLocal() as db:
+            db.get(User, user.id).email = "admin@example.uz"
+            db.commit()
+            granted = auth_service.grant_admin(db, "admin@example.uz")
+            self.assertTrue(granted.is_admin)
+            revoked = auth_service.grant_admin(db, "admin@example.uz", revoke=True)
+            self.assertFalse(revoked.is_admin)
+            self.assertIsNone(auth_service.grant_admin(db, "yoq@example.uz"))
 
     # --- hisoblarni bog'lash --------------------------------------------
 

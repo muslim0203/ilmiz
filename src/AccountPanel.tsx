@@ -1,5 +1,20 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, LogOut, ShieldCheck, UserRound, X } from "lucide-react";
+import { CheckCircle2, LogOut, ShieldCheck, UserRound } from "lucide-react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   PROVIDER_LABELS,
   loadCurrentUser,
@@ -8,7 +23,8 @@ import {
   startLogin,
   updateProfile,
   type AuthUser,
-} from "./authApi";
+} from "@/authApi";
+import { monogram } from "@/lib/format";
 
 const ORCID_HELP = "ORCID — tadqiqotchining xalqaro identifikatori. orcid.org da bepul olinadi.";
 
@@ -37,8 +53,12 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
         }
         setState("ready");
       })
-      .catch(() => { if (active) setState("error"); });
-    return () => { active = false; };
+      .catch(() => {
+        if (active) setState("error");
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const save = async (event: React.FormEvent) => {
@@ -68,94 +88,166 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="picker-backdrop" role="dialog" aria-modal="true" aria-label="Hisob" onMouseDown={onClose}>
-      <div className="account-panel" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="picker-head">
-          <h2>{user ? "Mening profilim" : "Tizimga kirish"}</h2>
-          <button className="picker-close" onClick={onClose} aria-label="Yopish"><X size={18} /></button>
-        </header>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{user ? "Mening profilim" : "Tizimga kirish"}</DialogTitle>
+          <DialogDescription>
+            {user
+              ? "Profil ma’lumotlaringiz maqola mualliflari bilan bog‘lanadi."
+              : "Parolsiz kirish — ORCID yoki Google hisobi orqali."}
+          </DialogDescription>
+        </DialogHeader>
 
-        {state === "loading" && <p className="account-note">Yuklanmoqda...</p>}
-        {state === "error" && <p className="account-note error">Hisob ma’lumotlari olinmadi.</p>}
+        {state === "loading" && (
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-2/3" />
+          </div>
+        )}
+
+        {state === "error" && (
+          <Alert variant="destructive">
+            <AlertDescription>Hisob ma’lumotlari olinmadi.</AlertDescription>
+          </Alert>
+        )}
 
         {state === "ready" && !user && (
-          <div className="account-login">
-            <UserRound size={30} />
-            <p>Profil ochish uchun quyidagi xizmatlardan biri orqali kiring. Parol talab qilinmaydi.</p>
-            {providers.length === 0 ? (
-              <p className="account-note error">
-                Hech bir provayder sozlanmagan. Server tomonida <code>ORCID_CLIENT_ID</code> yoki
-                {" "}<code>GOOGLE_CLIENT_ID</code> muhit o‘zgaruvchilari kerak.
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-6 text-center">
+              <span className="flex size-11 items-center justify-center rounded-full border bg-muted text-muted-foreground">
+                <UserRound className="size-5" />
+              </span>
+              <p className="text-sm text-muted-foreground">
+                Profil ochish uchun quyidagi xizmatlardan biri orqali kiring. Parol talab
+                qilinmaydi.
               </p>
+            </div>
+
+            {providers.length === 0 ? (
+              <Alert variant="destructive">
+                <AlertDescription>
+                  Hech bir provayder sozlanmagan. Server tomonida{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    ORCID_CLIENT_ID
+                  </code>{" "}
+                  yoki{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    GOOGLE_CLIENT_ID
+                  </code>{" "}
+                  muhit o‘zgaruvchilari kerak.
+                </AlertDescription>
+              </Alert>
             ) : (
-              <div className="account-providers">
+              <div className="grid gap-2">
                 {providers.map((provider) => (
-                  <button key={provider} className={`provider-button provider-${provider}`} onClick={() => startLogin(provider)}>
+                  <Button
+                    key={provider}
+                    variant={provider === "orcid" ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => startLogin(provider)}
+                  >
                     {PROVIDER_LABELS[provider] ?? provider}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
-            {providers.includes("orcid") && <small className="account-hint">{ORCID_HELP}</small>}
+
+            {providers.includes("orcid") && (
+              <p className="text-xs leading-relaxed text-muted-foreground">{ORCID_HELP}</p>
+            )}
           </div>
         )}
 
         {state === "ready" && user && (
-          <form className="account-form" onSubmit={save}>
-            <div className="account-identity">
-              <span className="account-avatar">{user.displayName.slice(0, 2).toUpperCase()}</span>
-              <div>
-                <strong>{user.displayName}</strong>
-                <span>{user.email ?? "e-pochta ko‘rsatilmagan"}</span>
-                <span className="account-provider">
-                  <ShieldCheck size={13} /> {user.provider === "orcid" ? "ORCID" : "Google"} orqali kirgan
-                </span>
+          <form className="space-y-4" onSubmit={save}>
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                {monogram(user.displayName)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{user.displayName}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {user.email ?? "e-pochta ko‘rsatilmagan"}
+                </div>
               </div>
+              <Badge variant="outline" className="gap-1 font-normal">
+                <ShieldCheck />
+                {user.provider === "orcid" ? "ORCID" : "Google"}
+              </Badge>
             </div>
 
             {user.orcid && (
-              <p className="account-orcid">
-                <CheckCircle2 size={14} /> ORCID:{" "}
-                <a href={`https://orcid.org/${user.orcid}`} target="_blank" rel="noreferrer">{user.orcid}</a>
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CheckCircle2 className="size-3.5 text-success" /> ORCID:{" "}
+                <a
+                  href={`https://orcid.org/${user.orcid}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-foreground underline-offset-4 hover:underline"
+                >
+                  {user.orcid}
+                </a>
               </p>
             )}
 
-            <label>
-              <span>Ism va familiya</span>
-              <input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} />
-            </label>
-            <label>
-              <span>Ish joyi</span>
-              <input
+            <Separator />
+
+            <div className="space-y-2">
+              <Label htmlFor="display-name">Ism va familiya</Label>
+              <Input
+                id="display-name"
+                value={draft.displayName}
+                onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="affiliation">Ish joyi</Label>
+              <Input
+                id="affiliation"
                 value={draft.affiliation}
                 onChange={(event) => setDraft({ ...draft, affiliation: event.target.value })}
                 placeholder="Masalan: Toshkent davlat universiteti"
               />
-            </label>
-            <label>
-              <span>Google Scholar profili</span>
-              <input
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="scholar-url">Google Scholar profili</Label>
+              <Input
+                id="scholar-url"
                 value={draft.scholarUrl}
                 onChange={(event) => setDraft({ ...draft, scholarUrl: event.target.value })}
                 placeholder="https://scholar.google.com/citations?user=..."
               />
-              <small>Google Scholar’da kirish xizmati yo‘q, shuning uchun havolani o‘zingiz kiritasiz.</small>
-            </label>
+              <p className="text-xs text-muted-foreground">
+                Google Scholar’da kirish xizmati yo‘q, shuning uchun havolani o‘zingiz kiritasiz.
+              </p>
+            </div>
 
-            {message && <p className="account-note success">{message}</p>}
-            {error && <p className="account-note error">{error}</p>}
+            {message && (
+              <Alert variant="success">
+                <CheckCircle2 />
+                <AlertDescription>{message}</AlertDescription>
+              </Alert>
+            )}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
 
-            <div className="account-actions">
-              <button type="button" className="account-signout" onClick={() => void signOut()}>
-                <LogOut size={15} /> Chiqish
-              </button>
-              <button type="submit" className="picker-ok" disabled={saving || !draft.displayName.trim()}>
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => void signOut()}>
+                <LogOut /> Chiqish
+              </Button>
+              <Button type="submit" disabled={saving || !draft.displayName.trim()}>
                 {saving ? "Saqlanmoqda..." : "Saqlash"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

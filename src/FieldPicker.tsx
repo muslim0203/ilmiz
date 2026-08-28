@@ -1,8 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { Check, Search, X } from "lucide-react";
-import type { FieldGroup } from "./api";
+import { useMemo, useState } from "react";
+import { Check, Search } from "lucide-react";
 
-const number = new Intl.NumberFormat("uz-UZ");
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { number } from "@/lib/format";
+import type { FieldGroup } from "@/api";
 
 type Props = {
   groups: FieldGroup[];
@@ -14,12 +26,6 @@ type Props = {
 export default function FieldPicker({ groups, selected, onApply, onClose }: Props) {
   const [draft, setDraft] = useState<string[]>(selected);
   const [needle, setNeedle] = useState("");
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const query = needle.trim().toLocaleLowerCase("uz");
   const visible = useMemo(() => {
@@ -36,62 +42,78 @@ export default function FieldPicker({ groups, selected, onApply, onClose }: Prop
 
   const draftSet = useMemo(() => new Set(draft), [draft]);
   const toggleField = (name: string) => {
-    setDraft((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
+    setDraft((current) =>
+      current.includes(name) ? current.filter((item) => item !== name) : [...current, name],
+    );
   };
   const toggleGroup = (group: FieldGroup) => {
     const names = group.fields.map((item) => item.name);
     const allOn = names.every((name) => draftSet.has(name));
-    setDraft((current) => allOn
-      ? current.filter((item) => !names.includes(item))
-      : Array.from(new Set([...current, ...names])));
+    setDraft((current) =>
+      allOn
+        ? current.filter((item) => !names.includes(item))
+        : Array.from(new Set([...current, ...names])),
+    );
   };
 
   return (
-    <div className="picker-backdrop" role="dialog" aria-modal="true" aria-label="Fan yo‘nalishini tanlang" onMouseDown={onClose}>
-      <div className="picker" onMouseDown={(event) => event.stopPropagation()}>
-        <header className="picker-head">
-          <h2>Fan yo‘nalishini tanlang</h2>
-          <div className="picker-search">
-            <Search size={15} />
-            <input
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="space-y-3 border-b p-6 pb-4">
+          <div className="space-y-1">
+            <DialogTitle>Fan yo‘nalishini tanlang</DialogTitle>
+            <DialogDescription>
+              Bir nechta sohani belgilab, katalogni toraytiring.
+            </DialogDescription>
+          </div>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               value={needle}
               onChange={(event) => setNeedle(event.target.value)}
               placeholder="Soha nomi bo‘yicha izlash..."
               autoFocus
+              className="pl-9"
             />
           </div>
-          <button className="picker-close" onClick={onClose} aria-label="Yopish"><X size={18} /></button>
-        </header>
+        </DialogHeader>
 
-        <div className="picker-body">
-          {visible.length === 0 && <p className="picker-empty">“{needle}” bo‘yicha soha topilmadi.</p>}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6">
+          {visible.length === 0 && (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              “{needle}” bo‘yicha soha topilmadi.
+            </p>
+          )}
           {visible.map((group) => {
             const names = group.fields.map((item) => item.name);
             const allOn = names.every((name) => draftSet.has(name));
             const someOn = !allOn && names.some((name) => draftSet.has(name));
             return (
-              <section className="picker-group" key={group.group}>
-                <label className="picker-group-head">
-                  <input
-                    type="checkbox"
+              <section key={group.group} className="space-y-2">
+                <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 transition-colors hover:bg-accent">
+                  <Checkbox
                     checked={allOn}
-                    ref={(node) => { if (node) node.indeterminate = someOn; }}
-                    onChange={() => toggleGroup(group)}
+                    indeterminate={someOn || undefined}
+                    onCheckedChange={() => toggleGroup(group)}
                   />
-                  <strong>{group.group}</strong>
-                  <small>{number.format(group.articles)}</small>
+                  <strong className="text-sm font-semibold tracking-tight">{group.group}</strong>
+                  <Badge variant="secondary" className="ml-auto font-normal tabular-nums">
+                    {number.format(group.articles)}
+                  </Badge>
                 </label>
-                <ul>
+                <Separator />
+                <ul className="grid gap-0.5 sm:grid-cols-2">
                   {group.fields.map((item) => (
                     <li key={item.name}>
-                      <label>
-                        <input
-                          type="checkbox"
+                      <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1.5 transition-colors hover:bg-accent">
+                        <Checkbox
                           checked={draftSet.has(item.name)}
-                          onChange={() => toggleField(item.name)}
+                          onCheckedChange={() => toggleField(item.name)}
                         />
-                        <span>{item.name}</span>
-                        <small>{number.format(item.articles)}</small>
+                        <span className="min-w-0 flex-1 truncate text-sm">{item.name}</span>
+                        <small className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {number.format(item.articles)}
+                        </small>
                       </label>
                     </li>
                   ))}
@@ -101,14 +123,22 @@ export default function FieldPicker({ groups, selected, onApply, onClose }: Prop
           })}
         </div>
 
-        <footer className="picker-foot">
-          <span>{draft.length ? `${draft.length} ta soha tanlandi` : "Soha tanlanmagan — hammasi ko‘rsatiladi"}</span>
-          <div>
-            <button className="picker-clear" onClick={() => setDraft([])} disabled={draft.length === 0}>Tozalash</button>
-            <button className="picker-ok" onClick={() => onApply(draft)}><Check size={15} /> Qo‘llash</button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/40 p-4">
+          <span className="text-sm text-muted-foreground">
+            {draft.length
+              ? `${draft.length} ta soha tanlandi`
+              : "Soha tanlanmagan — hammasi ko‘rsatiladi"}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setDraft([])} disabled={draft.length === 0}>
+              Tozalash
+            </Button>
+            <Button onClick={() => onApply(draft)}>
+              <Check /> Qo‘llash
+            </Button>
           </div>
-        </footer>
-      </div>
-    </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

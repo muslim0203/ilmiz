@@ -415,6 +415,9 @@ class User(Base):
     # Google Scholar'da OAuth yo'q, shuning uchun profil havolasi qo'lda kiritiladi.
     scholar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Admin panelga kirish huquqi. Birinchi adminni `grant-admin` CLI bilan
+    # yoki ILMIZ_ADMIN_TOKEN orqali tayinlash mumkin.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

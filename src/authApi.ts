@@ -1,6 +1,7 @@
 export type AuthUser = {
   id: number;
   provider: "orcid" | "google";
+  isAdmin: boolean;
   displayName: string;
   email: string | null;
   orcid: string | null;

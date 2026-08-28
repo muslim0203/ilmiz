@@ -72,8 +72,23 @@ Sozlanmagan provayder kirish oynasida ko‘rsatilmaydi. Endpointlar:
 - `PATCH /api/auth/me` — ism, ish joyi, Scholar havolasi
 - `POST /api/auth/logout` — sessiyani bekor qiladi
 
-`/api/admin/*` endpointlari `ILMIZ_ADMIN_TOKEN` bilan himoyalangan. Token
-sozlanmagan bo‘lsa admin API butunlay yopiq (HTTP 503):
+`/api/admin/*` ga ikki yo‘l bilan kirish mumkin:
+
+1. **Hisob orqali** — `is_admin` bo‘lgan foydalanuvchi ORCID/Google bilan
+   kiradi, alohida token kerak emas. Admin panel tugmasi faqat shunday
+   foydalanuvchiga ko‘rinadi.
+2. **Token orqali** — `ILMIZ_ADMIN_TOKEN`. Bu zaxira yo‘l: birinchi adminni
+   tayinlash uchun kerak, aks holda hech kim kira olmay qolardi.
+
+Adminni tayinlash (ORCID iD yoki e-pochta bo‘yicha):
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py grant-admin 0000-0002-1825-0097
+.\.venv\Scripts\python.exe backend\manage.py grant-admin admin@example.uz --revoke
+```
+
+Birorta admin ham yo‘q va token ham sozlanmagan bo‘lsa, admin API butunlay
+yopiq (HTTP 503):
 
 ```powershell
 $env:ILMIZ_ADMIN_TOKEN = python -c "import secrets; print(secrets.token_urlsafe(32))"

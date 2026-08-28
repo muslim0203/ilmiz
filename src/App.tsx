@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  AlertTriangle,
-  AtSign,
   ArrowRight,
   BookOpen,
   CalendarDays,
@@ -10,340 +8,83 @@ import {
   CheckCircle2,
   Clock3,
   Database,
-  Download,
-  ExternalLink,
   FileText,
   Globe2,
   Layers3,
-  Link2,
-  MapPin,
+  Loader2,
   Menu,
   RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
-  UsersRound,
-  WifiOff,
   X,
 } from "lucide-react";
-import { PAGE_SIZE, loadCatalog, loadJournal, loadJournalArticles, loadJournalIndex, searchArticles, searchJournals, type Facets, type PlatformStats } from "./api";
-import FieldPicker from "./FieldPicker";
-import AdminDashboard from "./AdminDashboard";
-import AccountPanel from "./AccountPanel";
-import { loadCurrentUser, type AuthUser } from "./authApi";
-import { articles as demoArticles, journals as demoJournals } from "./data";
-import type { Article, Journal } from "./types";
+
+import {
+  PAGE_SIZE,
+  loadCatalog,
+  loadJournalIndex,
+  searchArticles,
+  searchJournals,
+  type Facets,
+  type PlatformStats,
+} from "@/api";
+import { loadCurrentUser, type AuthUser } from "@/authApi";
+import { articles as demoArticles, journals as demoJournals } from "@/data";
+import type { Article, Journal } from "@/types";
+
+import AccountPanel from "@/AccountPanel";
+import AdminDashboard from "@/AdminDashboard";
+import FieldPicker from "@/FieldPicker";
+import { ArticleCard } from "@/components/article-card";
+import { Brand } from "@/components/brand";
+import { JournalCard } from "@/components/journal-card";
+import { JournalSheet } from "@/components/journal-sheet";
+import { ModeToggle } from "@/components/mode-toggle";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { number, shortDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type View = "journals" | "articles";
 
-const statusConfig = {
-  healthy: { label: "Yangilanib turadi", icon: CheckCircle2, className: "status-good" },
-  warning: { label: "Tekshirilmoqda", icon: AlertTriangle, className: "status-warn" },
-  missing: { label: "Qo‘lda kiritilgan", icon: WifiOff, className: "status-muted" },
-};
+const SHELL = "mx-auto w-full max-w-[1200px] px-4 sm:px-6";
 
-const number = new Intl.NumberFormat("uz-UZ");
-
-// `toLocaleDateString("uz-UZ", { month: "short" })` brauzerda "M08" beradi,
-// shuning uchun oy nomlari qo'lda.
-const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyun", "iyul", "avg", "sen", "okt", "noy", "dek"];
-
-function shortDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return `${date.getDate()}-${MONTHS[date.getMonth()]}`;
-}
-
-function Brand() {
+function Eyebrow({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <a className="brand" href="#top" aria-label="IlmIz bosh sahifa">
-      <span className="brand-mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-      <span className="brand-copy">
-        <strong>IlmIz</strong>
-        <small>Ochiq ilmiy indeks</small>
-      </span>
-    </a>
-  );
-}
-
-function HarvestStatus({ status }: { status: Journal["oaiStatus"] }) {
-  const config = statusConfig[status];
-  const Icon = config.icon;
-
-  return (
-    <span className={`status-pill ${config.className}`}>
-      <Icon size={13} strokeWidth={2.4} />
-      {config.label}
-    </span>
-  );
-}
-
-function JournalCard({ journal, onOpen }: { journal: Journal; onOpen: () => void }) {
-  return (
-    <article className="journal-card">
-      <button className="journal-main" onClick={onOpen} aria-label={`${journal.name} jurnalini ochish`}>
-        <span className="journal-monogram">{journal.shortName.slice(0, 2).toUpperCase()}</span>
-        <span className="journal-copy">
-          <span className="journal-topline">
-            <span className="oak-badge">
-              <ShieldCheck size={13} /> OAK
-            </span>
-            <HarvestStatus status={journal.oaiStatus} />
-          </span>
-          <strong>{journal.name}</strong>
-          <span className="publisher">{journal.publisher}</span>
-          <span className="journal-meta">
-            <span><MapPin size={14} />{journal.city}</span>
-            <span>ISSN {journal.issn}</span>
-          </span>
-          <span className="tag-row">
-            {journal.fields.slice(0, 3).map((field) => (
-              <span className="tag" key={field}>{field}</span>
-            ))}
-            {journal.fields.length > 3 && <span className="tag tag-more">+{journal.fields.length - 3}</span>}
-          </span>
-        </span>
-      </button>
-      <div className="journal-side">
-        <div>
-          <strong>{journal.articleCount ? number.format(journal.articleCount) : "—"}</strong>
-          <span>maqola</span>
-        </div>
-        <div>
-          <strong>{journal.recentArticles ? number.format(journal.recentArticles) : "—"}</strong>
-          <span>so‘nggi yillarda</span>
-        </div>
-        <button className="circle-button" onClick={onOpen} aria-label="Batafsil">
-          <ArrowRight size={18} />
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function ArticleCard({ article, journal }: { article: Article; journal: Journal }) {
-  const [open, setOpen] = useState(false);
-  const [citationsOpen, setCitationsOpen] = useState(false);
-  const published = article.publicationDate || (article.year ? String(article.year) : "Sana ko‘rsatilmagan");
-
-  const copyCitation = (value: string) => {
-    void navigator.clipboard?.writeText(value);
-  };
-
-  return (
-    <article className={`article-card ${open ? "article-open" : ""}`}>
-      <div className="article-source">
-        <span className="source-mark">{journal.shortName.slice(0, 2).toUpperCase()}</span>
-        <div>
-          <strong>{journal.name}</strong>
-          <span>{published}{article.volume !== "—" ? ` · ${article.volume}-jild` : ""}{article.issue !== "—" ? ` · ${article.issue}-son` : ""}{article.pages !== "—" ? ` · ${article.pages}-bet` : ""}</span>
-        </div>
-        {article.isDemo && <span className="demo-badge">DEMO</span>}
-      </div>
-      <button className="article-title" onClick={() => setOpen((value) => !value)}>
-        {article.title}
-      </button>
-      <p className="authors"><UsersRound size={15} /> {article.authors.join(", ")}</p>
-      <p className={`abstract ${open ? "expanded" : ""}`}>{article.abstract}</p>
-      <div className="article-footer">
-        <div className="tag-row">
-          {article.fields.map((field) => <span className="tag" key={field}>{field}</span>)}
-          <span className="tag">{article.language}</span>
-        </div>
-        <div className="article-actions">
-          {article.landingUrl && <a href={article.landingUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Maqola sahifasi</a>}
-          {article.doi && <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noreferrer" title="DOI"><Link2 size={16} /> DOI</a>}
-          <button title="Iqtibos formatlari" onClick={() => setCitationsOpen((value) => !value)}><Download size={16} /> Iqtibos</button>
-        </div>
-      </div>
-      {citationsOpen && article.citations && (
-        <div className="citation-panel">
-          {Object.entries(article.citations).map(([format, value]) => (
-            <div key={format}>
-              <span>{format.toUpperCase()}</span>
-              <p>{value}</p>
-              <button onClick={() => copyCitation(value)}>Nusxa olish</button>
-            </div>
-          ))}
-        </div>
+    <span
+      className={cn(
+        "text-[11px] font-medium uppercase tracking-widest text-muted-foreground",
+        className,
       )}
-    </article>
-  );
-}
-
-function JournalDrawer({ journal, onClose }: { journal: Journal; onClose: () => void }) {
-  const [detail, setDetail] = useState<Journal>(journal);
-  const [detailState, setDetailState] = useState<"loading" | "ready" | "error">("loading");
-  const [journalArticles, setJournalArticles] = useState<Article[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    setDetail(journal);
-    setDetailState("loading");
-    loadJournal(journal.id)
-      .then((value) => {
-        if (!active) return;
-        setDetail(value);
-        setDetailState("ready");
-      })
-      .catch(() => {
-        if (active) setDetailState("error");
-      });
-    return () => { active = false; };
-  }, [journal]);
-
-  useEffect(() => {
-    let active = true;
-    setJournalArticles([]);
-    loadJournalArticles(journal.id)
-      .then((items) => { if (active) setJournalArticles(items); })
-      .catch(() => undefined);
-    return () => { active = false; };
-  }, [journal]);
-
-  const profile = detail.profile;
-  const oakRecords = detail.oakRecords ?? [];
-  const areas = Array.from(new Set(oakRecords.map((item) => item.area).filter(Boolean)));
-  const latestDecision = oakRecords.find((item) => item.decision || item.sourceReference);
-
-  return (
-    <div className="drawer-shell" role="dialog" aria-modal="true" aria-label={`${detail.name} tafsilotlari`}>
-      <button className="drawer-backdrop" onClick={onClose} aria-label="Yopish" />
-      <aside className="drawer">
-        <button className="drawer-close" onClick={onClose} aria-label="Yopish"><X size={20} /></button>
-        <div className="drawer-head">
-          <span className="drawer-monogram">{detail.shortName.slice(0, 2).toUpperCase()}</span>
-          <span className="journal-topline">
-            <span className="oak-badge"><ShieldCheck size={13} /> OAK ro‘yxatida</span>
-            <HarvestStatus status={detail.oaiStatus} />
-          </span>
-          <h2>{detail.name}</h2>
-          <p>{detail.publisher}</p>
-        </div>
-
-        {detailState === "loading" && <div className="profile-loading"><RefreshCw className="spin" size={15} /> To‘liq profil yuklanmoqda...</div>}
-        {profile && (
-          <div className="profile-completeness">
-            <div><span>Profil to‘liqligi</span><strong>{Math.round(profile.completenessScore)}%</strong></div>
-            <div className="completeness-track"><i style={{ width: `${profile.completenessScore}%` }} /></div>
-            <small>Ochiq manbalardan {new Date(profile.fetchedAt).toLocaleDateString("uz-UZ")} kuni yig‘ilgan</small>
-          </div>
-        )}
-
-        <div className="drawer-stats">
-          <div><strong>{number.format(detail.articleCount)}</strong><span>Maqolalar</span></div>
-          <div><strong>{detail.issueCount}</strong><span>Sonlar</span></div>
-          <div><strong>{detail.founded ?? "—"}</strong><span>Asos solingan</span></div>
-        </div>
-
-        <section className="drawer-section">
-          <h3>Jurnal haqida</h3>
-          <p>{profile?.summary || detail.description || "Jurnal tavsifi hali yig‘ilmagan."}</p>
-          {profile?.sourceUrl && <a className="source-link" href={profile.sourceUrl} target="_blank" rel="noreferrer"><ShieldCheck size={12} /> Manbani ko‘rish</a>}
-        </section>
-
-        <section className="facts-grid">
-          <div><span>ISSN</span><strong>{detail.issn}</strong></div>
-          <div><span>e-ISSN</span><strong>{detail.eissn ?? "—"}</strong></div>
-          <div><span>Shahar</span><strong>{detail.city}</strong></div>
-          <div><span>Tillar</span><strong>{detail.languages.join(", ") || "—"}</strong></div>
-          {profile?.latestIssue && <div className="fact-wide"><span>So‘nggi son</span><strong>{profile.latestIssue}</strong></div>}
-          {profile?.publicationFrequency && <div className="fact-wide"><span>Davriylik</span><strong>{profile.publicationFrequency}</strong></div>}
-        </section>
-
-        {!!areas.length && (
-          <section className="drawer-section rich-section">
-            <div className="rich-title"><span><ShieldCheck size={17} /></span><div><h3>OAK reestri</h3><small>{oakRecords.length} ta rasmiy yozuv</small></div></div>
-            <div className="tag-row rich-tags">{areas.map((area) => <span className="tag" key={area}>{area}</span>)}</div>
-            {latestDecision && <div className="decision-note"><strong>{latestDecision.decision || latestDecision.sourceReference}</strong><span>{latestDecision.added ? `Kiritilgan: ${latestDecision.added}` : "Rasmiy reestr yozuvi"}</span></div>}
-          </section>
-        )}
-
-        {!!profile?.indexingClaims.length && (
-          <section className="drawer-section rich-section">
-            <div className="rich-title"><span><Layers3 size={17} /></span><div><h3>Indekslash bazalari</h3><small>Jurnal saytida ko‘rsatilgan da’volar</small></div></div>
-            <div className="indexing-grid">{profile.indexingClaims.map((claim) => <a key={claim.provider} href={claim.sourceUrl} target="_blank" rel="noreferrer"><strong>{claim.provider}</strong><span>{claim.verifiedAt ? "Tekshirilgan" : "Manbada ko‘rsatilgan"}</span></a>)}</div>
-          </section>
-        )}
-
-        {!!profile?.contacts.length && (
-          <section className="drawer-section rich-section">
-            <div className="rich-title"><span><AtSign size={17} /></span><div><h3>Aloqa ma’lumotlari</h3><small>Har biri manba bilan</small></div></div>
-            <div className="contact-list">{profile.contacts.map((contact, index) => (
-              <a key={`${contact.kind}-${contact.value}-${index}`} href={contact.sourceUrl} target="_blank" rel="noreferrer">
-                <span>{contact.kind === "email" ? "Email" : contact.kind === "phone" ? "Telefon" : "Manzil"}</span><strong>{contact.value}</strong>
-              </a>
-            ))}</div>
-          </section>
-        )}
-
-        {!!profile?.policies.length && (
-          <section className="drawer-section rich-section">
-            <div className="rich-title"><span><FileText size={17} /></span><div><h3>Siyosatlar va talablar</h3><small>Ochiq jurnal sahifalaridan</small></div></div>
-            <div className="policy-list">{profile.policies.map((policy) => (
-              <a key={policy.type} href={policy.url || policy.sourceUrl} target="_blank" rel="noreferrer">
-                <strong>{policy.title}</strong><span>{policy.content ? `${policy.content.slice(0, 150)}${policy.content.length > 150 ? "…" : ""}` : "Manbani ochish"}</span>
-              </a>
-            ))}</div>
-          </section>
-        )}
-
-        {!!profile?.editorialMembers.length && (
-          <section className="drawer-section rich-section">
-            <div className="rich-title"><span><UsersRound size={17} /></span><div><h3>Tahririyat a’zolari</h3><small>{profile.editorialMembers.length} ta yig‘ilgan yozuv</small></div></div>
-            <div className="editorial-list">{profile.editorialMembers.map((member, index) => (
-              <a key={`${member.name}-${index}`} href={member.sourceUrl} target="_blank" rel="noreferrer"><strong>{member.name}</strong><span>{member.role || "Tahrir hay’ati"}{member.affiliation ? ` · ${member.affiliation}` : ""}</span></a>
-            ))}</div>
-          </section>
-        )}
-
-        <section className="sync-card">
-          <div className="sync-icon"><RefreshCw size={19} /></div>
-          <div>
-            <span>Oxirgi yangilanish</span>
-            <strong>{detail.oaiLastSync ?? "Hozircha yangilanmagan"}</strong>
-          </div>
-          <HarvestStatus status={detail.oaiStatus} />
-        </section>
-
-        <section className="drawer-section">
-          <div className="section-heading compact-heading">
-            <div><span className="eyebrow">SO‘NGGI NASHRLAR</span><h3>Maqolalar</h3></div>
-            <span>{journalArticles.length} namuna</span>
-          </div>
-          {journalArticles.length ? (
-            <div className="mini-articles">
-              {journalArticles.map((article) => (
-                <div key={article.id}>
-                  <FileText size={17} />
-                  <span><strong>{article.title}</strong><small>{article.year} · {article.issue}-son</small></span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="empty-note">Bu jurnalning maqolalari hali yig‘ilmagan.</p>
-          )}
-        </section>
-
-        {detailState === "ready" && !profile && <p className="profile-empty">Bu jurnal uchun to‘liq profil hali yig‘ilmagan. Asosiy OAK ma’lumotlari ko‘rsatilmoqda.</p>}
-        {detailState === "error" && <p className="profile-empty">To‘liq profil API’dan yuklanmadi. Asosiy katalog ma’lumotlari saqlandi.</p>}
-
-        <a className="primary-button full-button" href={detail.website} target="_blank" rel="noreferrer">
-          Rasmiy saytga o‘tish <ExternalLink size={17} />
-        </a>
-      </aside>
-    </div>
+    >
+      {children}
+    </span>
   );
 }
 
 function App() {
   const [catalogJournals, setCatalogJournals] = useState<Journal[]>(demoJournals);
   const [catalogArticles, setCatalogArticles] = useState<Article[]>(demoArticles);
-  const [platformStats, setPlatformStats] = useState<PlatformStats>({ journals: demoJournals.length, articles: demoArticles.length, healthySources: 0 });
+  const [platformStats, setPlatformStats] = useState<PlatformStats>({
+    journals: demoJournals.length,
+    articles: demoArticles.length,
+    healthySources: 0,
+  });
   const [apiState, setApiState] = useState<"loading" | "live" | "fallback">("loading");
   const [adminOpen, setAdminOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -375,43 +116,59 @@ function App() {
         setArticleTotal(data.articles.total);
         setPlatformStats(data.stats);
         setFacets(data.facets);
-        void loadJournalIndex().then((items) => { if (active) setJournalIndex(items); });
+        void loadJournalIndex().then((items) => {
+          if (active) setJournalIndex(items);
+        });
         setApiState("live");
       })
       .catch(() => {
         if (active) setApiState("fallback");
       });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
     let active = true;
     void loadCurrentUser()
-      .then((value) => { if (active) setAccount(value); })
+      .then((value) => {
+        if (active) setAccount(value);
+      })
       .catch(() => undefined);
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [accountOpen]);
 
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
   // Ilgari bu joyda o'ylab topilgan "jonli konsol" turardi: soxta vaqtlar,
   // HTTP kodlari va yozuv sonlari. Endi haqiqiy yangilanish sanalari.
-  const recentUpdates = useMemo(() => journalIndex
-    .filter((journal) => journal.oaiLastSync)
-    .sort((left, right) => (right.oaiLastSync ?? "").localeCompare(left.oaiLastSync ?? ""))
-    .slice(0, 4)
-    .map((journal) => ({
-      id: journal.id,
-      name: journal.name.length > 34 ? `${journal.name.slice(0, 34)}…` : journal.name,
-      when: shortDate(journal.oaiLastSync as string),
-      articles: number.format(journal.articleCount),
-    })), [journalIndex]);
+  const recentUpdates = useMemo(
+    () =>
+      journalIndex
+        .filter((journal) => journal.oaiLastSync)
+        .sort((left, right) => (right.oaiLastSync ?? "").localeCompare(left.oaiLastSync ?? ""))
+        .slice(0, 5)
+        .map((journal) => ({
+          id: journal.id,
+          name: journal.name.length > 40 ? `${journal.name.slice(0, 40)}…` : journal.name,
+          when: shortDate(journal.oaiLastSync as string),
+          articles: number.format(journal.articleCount),
+        })),
+    [journalIndex],
+  );
 
-  const topFields = useMemo(() => facets.fieldGroups
-    .flatMap((group) => group.fields)
-    .sort((left, right) => right.articles - left.articles)
-    .slice(0, 6)
-    .map((item) => item.name), [facets]);
+  const topFields = useMemo(
+    () =>
+      facets.fieldGroups
+        .flatMap((group) => group.fields)
+        .sort((left, right) => right.articles - left.articles)
+        .slice(0, 6)
+        .map((item) => item.name),
+    [facets],
+  );
   // Qidiruv va filtrlar serverda qo'llanadi. Ilgari mijozda ham takroran
   // filtrlanardi va bu server topgan natijalarni qirqib tashlardi.
   const journalById = useMemo(
@@ -422,6 +179,8 @@ function App() {
   const visibleArticles = catalogArticles;
   const totalResults = view === "journals" ? journalTotal : articleTotal;
   const shown = view === "journals" ? visibleJournals.length : visibleArticles.length;
+  const filtersActive =
+    Boolean(query.trim()) || selectedFields.length > 0 || city !== "Barcha shaharlar" || oaiOnly;
 
   const resetFilters = () => {
     setQuery("");
@@ -430,10 +189,7 @@ function App() {
     setOaiOnly(false);
   };
 
-  const activeCities = useMemo(
-    () => (city === "Barcha shaharlar" ? [] : [city]),
-    [city],
-  );
+  const activeCities = useMemo(() => (city === "Barcha shaharlar" ? [] : [city]), [city]);
 
   // `loadCatalog` filtrsiz ro'yxatni allaqachon olib bo'lgan. Bu effekt jonli
   // rejimga o'tgan zahoti ishga tushsa, aynan o'sha so'rovni takrorlardi.
@@ -441,21 +197,27 @@ function App() {
 
   useEffect(() => {
     if (apiState !== "live") return;
-    if (skipFirstSearch.current && !query.trim() && selectedFields.length === 0 && activeCities.length === 0) {
+    if (
+      skipFirstSearch.current &&
+      !query.trim() &&
+      selectedFields.length === 0 &&
+      activeCities.length === 0
+    ) {
       skipFirstSearch.current = false;
       return;
     }
     skipFirstSearch.current = false;
     const timer = window.setTimeout(() => {
-      const request = view === "articles"
-        ? searchArticles(query, selectedFields, activeCities).then((page) => {
-            setCatalogArticles(page.items);
-            setArticleTotal(page.total);
-          })
-        : searchJournals(query, selectedFields, activeCities, 0, oaiOnly).then((page) => {
-            setCatalogJournals(page.items);
-            setJournalTotal(page.total);
-          });
+      const request =
+        view === "articles"
+          ? searchArticles(query, selectedFields, activeCities).then((page) => {
+              setCatalogArticles(page.items);
+              setArticleTotal(page.total);
+            })
+          : searchJournals(query, selectedFields, activeCities, 0, oaiOnly).then((page) => {
+              setCatalogJournals(page.items);
+              setJournalTotal(page.total);
+            });
       void request.catch(() => undefined);
     }, 250);
     return () => window.clearTimeout(timer);
@@ -464,15 +226,18 @@ function App() {
   const loadMore = () => {
     if (loadingMore || apiState !== "live") return;
     setLoadingMore(true);
-    const request = view === "articles"
-      ? searchArticles(query, selectedFields, activeCities, visibleArticles.length).then((page) => {
-          setCatalogArticles((current) => [...current, ...page.items]);
-          setArticleTotal(page.total);
-        })
-      : searchJournals(query, selectedFields, activeCities, visibleJournals.length, oaiOnly).then((page) => {
-          setCatalogJournals((current) => [...current, ...page.items]);
-          setJournalTotal(page.total);
-        });
+    const request =
+      view === "articles"
+        ? searchArticles(query, selectedFields, activeCities, visibleArticles.length).then((page) => {
+            setCatalogArticles((current) => [...current, ...page.items]);
+            setArticleTotal(page.total);
+          })
+        : searchJournals(query, selectedFields, activeCities, visibleJournals.length, oaiOnly).then(
+            (page) => {
+              setCatalogJournals((current) => [...current, ...page.items]);
+              setJournalTotal(page.total);
+            },
+          );
     void request.catch(() => undefined).finally(() => setLoadingMore(false));
   };
 
@@ -480,219 +245,570 @@ function App() {
     return <AdminDashboard onClose={() => setAdminOpen(false)} />;
   }
 
-  const picker = pickerOpen && (
-    <FieldPicker
-      groups={facets.fieldGroups}
-      selected={selectedFields}
-      onApply={(next) => { setSelectedFields(next); setPickerOpen(false); }}
-      onClose={() => setPickerOpen(false)}
-    />
+  const navLinks = (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(view === "journals" && "bg-accent text-accent-foreground")}
+        onClick={() => {
+          setView("journals");
+          setMobileNav(false);
+        }}
+      >
+        Jurnallar
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn(view === "articles" && "bg-accent text-accent-foreground")}
+        onClick={() => {
+          setView("articles");
+          setMobileNav(false);
+        }}
+      >
+        Maqolalar
+      </Button>
+      <Button variant="ghost" size="sm" asChild onClick={() => setMobileNav(false)}>
+        <a href="#monitoring">Monitoring</a>
+      </Button>
+      <Button variant="ghost" size="sm" asChild onClick={() => setMobileNav(false)}>
+        <a href="#about">Loyiha haqida</a>
+      </Button>
+    </>
   );
 
+  const apiLabel =
+    apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Demo rejim";
+
   return (
-    <div className="app" id="top">
-      <header className="site-header">
-        <div className="header-inner">
+    <div id="top" className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur-md">
+        <div className={cn(SHELL, "flex h-14 items-center gap-4")}>
           <Brand />
-          <nav className={mobileNav ? "nav-open" : ""} aria-label="Asosiy navigatsiya">
-            <button className={view === "journals" ? "nav-active" : ""} onClick={() => { setView("journals"); setMobileNav(false); }}>Jurnallar</button>
-            <button className={view === "articles" ? "nav-active" : ""} onClick={() => { setView("articles"); setMobileNav(false); }}>Maqolalar</button>
-            <a href="#monitoring" onClick={() => setMobileNav(false)}>Monitoring</a>
-            <a href="#about" onClick={() => setMobileNav(false)}>Loyiha haqida</a>
-            <button className="mobile-admin-link" onClick={() => { setAdminOpen(true); setMobileNav(false); }}>Admin panel</button>
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Asosiy navigatsiya">
+            {navLinks}
           </nav>
-          <div className="header-actions">
-            <span className={`live-pill api-${apiState}`}><span /> {apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Demo rejim"}</span>
-            <button className="account-button" onClick={() => setAccountOpen(true)}>{account ? account.displayName.split(" ")[0] : "Kirish"}</button>
-              <button className="admin-button" onClick={() => setAdminOpen(true)}>Admin panel</button>
-            <button className="mobile-menu" onClick={() => setMobileNav((value) => !value)} aria-label="Menyuni ochish"><Menu size={21} /></button>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Badge
+              variant="outline"
+              className="hidden gap-1.5 font-normal text-muted-foreground sm:inline-flex"
+            >
+              <span
+                className={cn(
+                  "size-1.5 rounded-full",
+                  apiState === "live" && "bg-success",
+                  apiState === "loading" && "animate-pulse bg-warning",
+                  apiState === "fallback" && "bg-muted-foreground",
+                )}
+              />
+              {apiLabel}
+            </Badge>
+            <ModeToggle />
+            <Button variant="outline" size="sm" onClick={() => setAccountOpen(true)}>
+              {account ? account.displayName.split(" ")[0] : "Kirish"}
+            </Button>
+            {account?.isAdmin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden lg:inline-flex"
+                onClick={() => setAdminOpen(true)}
+              >
+                Admin panel
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setMobileNav(true)}
+              aria-label="Menyuni ochish"
+            >
+              <Menu />
+            </Button>
           </div>
         </div>
       </header>
 
-      <main>
-        <section className="hero">
-          <div className="hero-grid" aria-hidden="true" />
-          <div className="hero-inner">
-            <div className="hero-copy">
-              <span className="hero-kicker"><Database size={15} /> O‘zbekiston ilmiy nashrlari yagona indeksi</span>
-              <h1>Ilmiy manbani<br /><em>bir joydan</em> toping.</h1>
-              <p>OAK tasdiqlagan jurnallar va ularda chop etilgan maqolalarning muntazam yangilanadigan ochiq katalogi.</p>
-            </div>
-            <div className="hero-aside">
-              <div className="index-note">
-                <Activity size={18} />
-                <div><span>Oxirgi indekslash</span><strong>bugun, 06:12</strong></div>
-                <span className="index-bars"><i /><i /><i /><i /></span>
-              </div>
-              <p>Ma’lumotlar jurnal saytlaridan avtomatik yangilanadi.</p>
-            </div>
-            <div className="search-panel">
-              <div className="search-box">
-                <Search size={21} />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={view === "journals" ? "Jurnal nomi, ISSN, nashriyot yoki sohani qidiring..." : "Maqola, muallif yoki kalit so‘zni qidiring..."}
-                  aria-label="Qidiruv"
-                />
-                {query && <button onClick={() => setQuery("")} aria-label="Qidiruvni tozalash"><X size={17} /></button>}
-              </div>
-              <button className="search-button">Izlash <ArrowRight size={18} /></button>
-            </div>
-            <div className="quick-links">
-              <span>Ko‘p qidirilgan:</span>
-              {topFields.map((item) => (
-                <button
-                  key={item}
-                  className={fieldSet.has(item) ? "active" : ""}
-                  onClick={() => setSelectedFields((current) => current.includes(item)
-                    ? current.filter((name) => name !== item)
-                    : [...current, item])}
+      <Sheet open={mobileNav} onOpenChange={setMobileNav}>
+        <SheetContent side="left" className="w-72 p-6">
+          <SheetTitle className="sr-only">Navigatsiya</SheetTitle>
+          <Brand />
+          <nav className="mt-6 flex flex-col items-stretch gap-1 [&_button]:justify-start">
+            {navLinks}
+            {account?.isAdmin && (
+              <>
+                <Separator className="my-2" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start"
+                  onClick={() => {
+                    setAdminOpen(true);
+                    setMobileNav(false);
+                  }}
                 >
-                  {item}
-                </button>
-              ))}
+                  Admin panel
+                </Button>
+              </>
+            )}
+          </nav>
+        </SheetContent>
+      </Sheet>
+
+      <main className="flex-1">
+        <section className="relative overflow-hidden border-b">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 -z-10 opacity-70"
+            style={{
+              backgroundImage:
+                "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
+              backgroundSize: "56px 56px",
+              maskImage: "radial-gradient(ellipse 65% 60% at 50% 0%, #000 55%, transparent 100%)",
+              WebkitMaskImage:
+                "radial-gradient(ellipse 65% 60% at 50% 0%, #000 55%, transparent 100%)",
+            }}
+          />
+          <div className={cn(SHELL, "py-14 sm:py-20")}>
+            <div className="mx-auto max-w-3xl text-center">
+              <Badge variant="outline" className="mb-5 gap-1.5 bg-background/60 py-1 font-normal">
+                <Database className="size-3.5" />
+                O‘zbekiston ilmiy nashrlari yagona indeksi
+              </Badge>
+              <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl">
+                Ilmiy manbani{" "}
+                <span className="text-primary">bir joydan</span> toping.
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
+                OAK tasdiqlagan jurnallar va ularda chop etilgan maqolalarning muntazam
+                yangilanadigan ochiq katalogi.
+              </p>
+
+              <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={
+                      view === "journals"
+                        ? "Jurnal nomi, ISSN, nashriyot yoki soha..."
+                        : "Maqola, muallif yoki kalit so‘z..."
+                    }
+                    aria-label="Qidiruv"
+                    className="h-11 bg-background pl-9 pr-9 text-base shadow-sm"
+                  />
+                  {query && (
+                    <button
+                      onClick={() => setQuery("")}
+                      aria-label="Qidiruvni tozalash"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  )}
+                </div>
+                <Button
+                  size="xl"
+                  className="shrink-0"
+                  onClick={() =>
+                    document
+                      .getElementById("catalog")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
+                >
+                  Izlash <ArrowRight />
+                </Button>
+              </div>
+
+              {topFields.length > 0 && (
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Ko‘p qidirilgan:</span>
+                  {topFields.map((item) => (
+                    <Button
+                      key={item}
+                      variant={fieldSet.has(item) ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 rounded-full px-3 text-xs font-normal"
+                      onClick={() =>
+                        setSelectedFields((current) =>
+                          current.includes(item)
+                            ? current.filter((name) => name !== item)
+                            : [...current, item],
+                        )
+                      }
+                    >
+                      {item}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </section>
 
-        <section className="metric-strip" aria-label="Platforma ko‘rsatkichlari">
-          <div className="metric-inner">
-            <div><BookOpen size={21} /><span><strong>{number.format(platformStats.journals)}</strong><small>OAK jurnallari</small></span></div>
-            <div><FileText size={21} /><span><strong>{number.format(platformStats.articles)}</strong><small>Maqolalar</small></span></div>
-            <div><RefreshCw size={21} /><span><strong>{number.format(platformStats.healthySources)}</strong><small>Yangilanadigan jurnallar</small></span></div>
-            <div><Layers3 size={21} /><span><strong>{facets.fieldCount || "—"}</strong><small>Ilmiy sohalar</small></span></div>
-            <p><Check size={16} /> OAK ro‘yxati: 10-iyun, 2026</p>
-          </div>
-        </section>
-
-        <section className="catalog-section">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">OCHIQ KATALOG</span>
-              <h2>{view === "journals" ? "OAK jurnallarini o‘rganing" : "Ilmiy maqolalarni izlang"}</h2>
-              <p>{view === "journals" ? "Tasdiqlangan nashrlar, yangilanish holati va arxiv ko‘rsatkichlari." : "Barcha jurnallardan yig‘ilgan yagona maqolalar bazasi."}</p>
-            </div>
-            <div className="view-tabs" role="tablist">
-              <button className={view === "journals" ? "active" : ""} onClick={() => setView("journals")}><BookOpen size={16} /> Jurnallar</button>
-              <button className={view === "articles" ? "active" : ""} onClick={() => setView("articles")}><FileText size={16} /> Maqolalar</button>
-            </div>
-          </div>
-
-          <div className="catalog-layout">
-            <aside className="filters">
-              <div className="filter-title"><SlidersHorizontal size={17} /><strong>Filtrlar</strong><button onClick={resetFilters}>Tozalash</button></div>
-              <div className="filter-field">
-                <span>Ilmiy soha</span>
-                <button className="field-trigger" onClick={() => setPickerOpen(true)}>
-                  <Layers3 size={15} />
-                  {selectedFields.length === 0
-                    ? (facets.fieldCount ? `Barcha sohalar (${facets.fieldCount})` : "Barcha sohalar")
-                    : `${selectedFields.length} ta soha tanlandi`}
-                </button>
-                {selectedFields.length > 0 && (
-                  <div className="field-chips">
-                    {selectedFields.map((item) => (
-                      <button key={item} onClick={() => setSelectedFields((current) => current.filter((name) => name !== item))}>
-                        {item} <X size={11} />
-                      </button>
-                    ))}
+        <section aria-label="Platforma ko‘rsatkichlari" className="border-b bg-muted/30">
+          <div className={cn(SHELL, "grid gap-3 py-6 sm:grid-cols-2 lg:grid-cols-4")}>
+            {[
+              { icon: BookOpen, value: number.format(platformStats.journals), label: "OAK jurnallari" },
+              { icon: FileText, value: number.format(platformStats.articles), label: "Maqolalar" },
+              {
+                icon: RefreshCw,
+                value: number.format(platformStats.healthySources),
+                label: "Yangilanadigan jurnallar",
+              },
+              { icon: Layers3, value: facets.fieldCount || "—", label: "Ilmiy sohalar" },
+            ].map((item) => (
+              <Card key={item.label} className="gap-0 py-0">
+                <CardContent className="flex items-center gap-3 p-4">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+                    <item.icon className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xl font-semibold tabular-nums tracking-tight">
+                      {item.value}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{item.label}</div>
                   </div>
-                )}
-              </div>
-              <label>
-                <span>Shahar</span>
-                <select value={city} onChange={(event) => setCity(event.target.value)}>
-                  {cities.map((item) => <option key={item}>{item}</option>)}
-                </select>
-              </label>
-              <label className="switch-row">
-                <span><strong>Avtomatik yangilanadigan</strong><small>Maqolalari muntazam yig‘iladigan jurnallar</small></span>
-                <input type="checkbox" checked={oaiOnly} onChange={(event) => setOaiOnly(event.target.checked)} />
-                <i aria-hidden="true" />
-              </label>
-              <div className="filter-note">
-                <ShieldCheck size={18} />
-                <p><strong>Ishonchli ma’lumot</strong><span>Har bir yozuv manbasi va yangilangan vaqti bilan saqlanadi.</span></p>
-              </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className={cn(SHELL, "flex justify-center pb-5")}>
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Check className="size-3.5 text-success" /> OAK ro‘yxati: 10-iyun, 2026
+            </span>
+          </div>
+        </section>
+
+        <section id="catalog" className={cn(SHELL, "py-12 sm:py-16")}>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-1.5">
+              <Eyebrow>Ochiq katalog</Eyebrow>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                {view === "journals" ? "OAK jurnallarini o‘rganing" : "Ilmiy maqolalarni izlang"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {view === "journals"
+                  ? "Tasdiqlangan nashrlar, yangilanish holati va arxiv ko‘rsatkichlari."
+                  : "Barcha jurnallardan yig‘ilgan yagona maqolalar bazasi."}
+              </p>
+            </div>
+            <Tabs value={view} onValueChange={(value) => setView(value as View)}>
+              <TabsList>
+                <TabsTrigger value="journals">
+                  <BookOpen /> Jurnallar
+                </TabsTrigger>
+                <TabsTrigger value="articles">
+                  <FileText /> Maqolalar
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <aside className="lg:sticky lg:top-20 lg:self-start">
+              <Card className="gap-4 py-4">
+                <CardContent className="space-y-4 px-4">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="size-4 text-muted-foreground" />
+                    <strong className="text-sm font-semibold">Filtrlar</strong>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto h-7 px-2 text-xs"
+                      onClick={resetFilters}
+                      disabled={!filtersActive}
+                    >
+                      Tozalash
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Ilmiy soha</Label>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start font-normal"
+                      onClick={() => setPickerOpen(true)}
+                    >
+                      <Layers3 className="text-muted-foreground" />
+                      <span className="truncate">
+                        {selectedFields.length === 0
+                          ? facets.fieldCount
+                            ? `Barcha sohalar (${facets.fieldCount})`
+                            : "Barcha sohalar"
+                          : `${selectedFields.length} ta soha tanlandi`}
+                      </span>
+                    </Button>
+                    {selectedFields.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {selectedFields.map((item) => (
+                          <button
+                            key={item}
+                            onClick={() =>
+                              setSelectedFields((current) => current.filter((name) => name !== item))
+                            }
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-md border bg-secondary px-2 py-0.5 text-xs text-secondary-foreground transition-colors hover:bg-secondary/70"
+                          >
+                            {item}
+                            <X className="size-3" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Shahar</Label>
+                    <Select value={city} onValueChange={setCity}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {cities.map((item) => (
+                          <SelectItem key={item} value={item}>
+                            {item}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg border p-3">
+                    <div className="min-w-0 flex-1">
+                      <Label htmlFor="oai-only" className="text-sm">
+                        Avtomatik yangilanadigan
+                      </Label>
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                        Maqolalari muntazam yig‘iladigan jurnallar
+                      </p>
+                    </div>
+                    <Switch
+                      id="oai-only"
+                      checked={oaiOnly}
+                      onCheckedChange={setOaiOnly}
+                      className="mt-0.5"
+                    />
+                  </div>
+
+                  <div className="flex gap-2.5 rounded-lg border bg-muted/40 p-3">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div>
+                      <div className="text-xs font-medium">Ishonchli ma’lumot</div>
+                      <p className="text-xs leading-snug text-muted-foreground">
+                        Har bir yozuv manbasi va yangilangan vaqti bilan saqlanadi.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </aside>
 
-            <div className="results">
-              <div className="results-head">
-                <p><strong>{number.format(totalResults)}</strong> ta natija{shown < totalResults ? ` · ${number.format(shown)} ta ko‘rsatilmoqda` : ""}</p>
-                <span><Clock3 size={14} /> {view === "journals" ? "Eng faol jurnallar birinchi" : "Eng yangi maqolalar birinchi"}</span>
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+                <p className="text-sm text-muted-foreground">
+                  <strong className="font-semibold tabular-nums text-foreground">
+                    {number.format(totalResults)}
+                  </strong>{" "}
+                  ta natija
+                  {shown < totalResults ? ` · ${number.format(shown)} ta ko‘rsatilmoqda` : ""}
+                </p>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock3 className="size-3.5" />
+                  {view === "journals" ? "Eng faol jurnallar birinchi" : "Eng yangi maqolalar birinchi"}
+                </span>
               </div>
-              <div className={view === "journals" ? "journal-list" : "article-list"}>
+
+              <div className="flex flex-col gap-3">
                 {view === "journals"
-                  ? visibleJournals.map((journal) => <JournalCard key={journal.id} journal={journal} onOpen={() => setSelectedJournal(journal)} />)
+                  ? visibleJournals.map((journal) => (
+                      <JournalCard
+                        key={journal.id}
+                        journal={journal}
+                        onOpen={() => setSelectedJournal(journal)}
+                      />
+                    ))
                   : visibleArticles.map((article) => {
                       const journal = journalById.get(article.journalId);
-                      return journal ? <ArticleCard key={article.id} article={article} journal={journal} /> : null;
+                      return journal ? (
+                        <ArticleCard key={article.id} article={article} journal={journal} />
+                      ) : null;
                     })}
               </div>
+
               {shown === 0 && (
-                <div className="empty-state"><Search size={28} /><h3>Natija topilmadi</h3><p>Qidiruv yoki filtrlarni o‘zgartirib ko‘ring.</p><button onClick={resetFilters}>Filtrlarni tozalash</button></div>
+                <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-16 text-center">
+                  <span className="flex size-11 items-center justify-center rounded-full border bg-muted text-muted-foreground">
+                    <Search className="size-5" />
+                  </span>
+                  <h3 className="text-base font-semibold tracking-tight">Natija topilmadi</h3>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Qidiruv yoki filtrlarni o‘zgartirib ko‘ring.
+                  </p>
+                  <Button variant="outline" size="sm" onClick={resetFilters}>
+                    Filtrlarni tozalash
+                  </Button>
+                </div>
               )}
+
               {shown > 0 && shown < totalResults && (
-                <button className="load-more" onClick={loadMore} disabled={loadingMore}>
-                  {loadingMore ? "Yuklanmoqda..." : `Yana ${number.format(Math.min(PAGE_SIZE, totalResults - shown))} ta ko‘rsatish`}
-                  <ArrowRight size={17} />
-                </button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="animate-spin" /> Yuklanmoqda...
+                    </>
+                  ) : (
+                    <>
+                      Yana {number.format(Math.min(PAGE_SIZE, totalResults - shown))} ta ko‘rsatish
+                      <ArrowRight />
+                    </>
+                  )}
+                </Button>
               )}
             </div>
           </div>
         </section>
 
-        <section className="monitor-section" id="monitoring">
-          <div className="monitor-copy">
-            <span className="eyebrow light">AVTOMATIK YANGILANISH</span>
-            <h2>Indeks har doim<br />yangilanib turadi.</h2>
-            <p>Har bir jurnal alohida kuzatiladi. Yangi son chiqishi bilan maqolalar indeksga qo‘shiladi.</p>
-            <div className="monitor-features">
-              <span><CheckCircle2 size={17} /> Faqat o‘zgargan yozuvlar olinadi</span>
-              <span><CheckCircle2 size={17} /> Takroriy yozuvlar aniqlanadi</span>
-              <span><CheckCircle2 size={17} /> Har bir maydonning manbasi saqlanadi</span>
+        <section id="monitoring" className="border-y bg-muted/30">
+          <div className={cn(SHELL, "grid gap-8 py-12 sm:py-16 lg:grid-cols-2 lg:items-center")}>
+            <div className="space-y-4">
+              <Eyebrow>Avtomatik yangilanish</Eyebrow>
+              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+                Indeks har doim yangilanib turadi.
+              </h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Har bir jurnal alohida kuzatiladi. Yangi son chiqishi bilan maqolalar indeksga
+                qo‘shiladi.
+              </p>
+              <ul className="space-y-2">
+                {[
+                  "Faqat o‘zgargan yozuvlar olinadi",
+                  "Takroriy yozuvlar aniqlanadi",
+                  "Har bir maydonning manbasi saqlanadi",
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="size-4 shrink-0 text-success" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-          <div className="monitor-console">
-            <div className="console-head"><span><i /><i /><i /></span><strong>So‘nggi yangilanishlar</strong><Activity size={16} /></div>
-            <div className="console-body">
-              {recentUpdates.length === 0 && <p className="console-empty">Yangilanish ma’lumoti hali yo‘q.</p>}
-              {recentUpdates.map((item) => (
-                <p key={item.id}>
-                  <time>{item.when}</time>
-                  <span>{item.name}</span>
-                  <small>{item.articles} maqola</small>
-                </p>
-              ))}
-            </div>
+
+            <Card className="gap-0 overflow-hidden py-0">
+              <div className="flex items-center gap-2 border-b bg-muted/50 px-4 py-3">
+                <span className="flex gap-1.5">
+                  <i className="size-2.5 rounded-full bg-destructive/60 not-italic" />
+                  <i className="size-2.5 rounded-full bg-warning/70 not-italic" />
+                  <i className="size-2.5 rounded-full bg-success/70 not-italic" />
+                </span>
+                <strong className="text-sm font-medium">So‘nggi yangilanishlar</strong>
+                <Activity className="ml-auto size-4 text-muted-foreground" />
+              </div>
+              <div className="divide-y">
+                {recentUpdates.length === 0 && (
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    Yangilanish ma’lumoti hali yo‘q.
+                  </p>
+                )}
+                {recentUpdates.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+                    <time className="w-16 shrink-0 font-mono text-xs text-muted-foreground">
+                      {item.when}
+                    </time>
+                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    <small className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                      {item.articles} maqola
+                    </small>
+                  </div>
+                ))}
+              </div>
+            </Card>
           </div>
         </section>
 
-        <section className="about-section" id="about">
-          <div>
-            <span className="eyebrow">LOYIHA TAMOYILI</span>
-            <h2>Ochiq, tekshiriladigan va foydali ilmiy infratuzilma.</h2>
+        <section id="about" className={cn(SHELL, "py-12 sm:py-16")}>
+          <div className="max-w-2xl space-y-2">
+            <Eyebrow>Loyiha tamoyili</Eyebrow>
+            <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+              Ochiq, tekshiriladigan va foydali ilmiy infratuzilma.
+            </h2>
           </div>
-          <div className="principles">
-            <article><span>01</span><Globe2 size={22} /><h3>Ochiqlik</h3><p>Metama’lumotlar va qidiruv barcha foydalanuvchilar uchun ochiq.</p></article>
-            <article><span>02</span><ShieldCheck size={22} /><h3>Manba aniqligi</h3><p>Har bir maydon qayerdan va qachon olingani qayd etiladi.</p></article>
-            <article><span>03</span><CalendarDays size={22} /><h3>Doimiy yangilanish</h3><p>Faqat o‘zgargan yozuvlar muntazam olinadi, indeks eskirmaydi.</p></article>
+          <div className="mt-8 grid gap-3 md:grid-cols-3">
+            {[
+              {
+                n: "01",
+                icon: Globe2,
+                title: "Ochiqlik",
+                text: "Metama’lumotlar va qidiruv barcha foydalanuvchilar uchun ochiq.",
+              },
+              {
+                n: "02",
+                icon: ShieldCheck,
+                title: "Manba aniqligi",
+                text: "Har bir maydon qayerdan va qachon olingani qayd etiladi.",
+              },
+              {
+                n: "03",
+                icon: CalendarDays,
+                title: "Doimiy yangilanish",
+                text: "Faqat o‘zgargan yozuvlar muntazam olinadi, indeks eskirmaydi.",
+              },
+            ].map((item) => (
+              <Card key={item.n} className="gap-3 py-5">
+                <CardContent className="space-y-2.5 px-5">
+                  <div className="flex items-center justify-between">
+                    <span className="flex size-9 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+                      <item.icon className="size-4" />
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">{item.n}</span>
+                  </div>
+                  <h3 className="text-base font-semibold tracking-tight">{item.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{item.text}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </section>
       </main>
 
-      <footer>
-        <div className="footer-inner">
+      <footer className="border-t">
+        <div
+          className={cn(
+            SHELL,
+            "flex flex-col items-center gap-4 py-8 sm:flex-row sm:justify-between",
+          )}
+        >
           <Brand />
-          <p>O‘zbekiston ilmiy nashrlari uchun ochiq indeks prototipi.</p>
-          <span>© 2026 IlmIz · MVP 0.1</span>
+          <p className="text-center text-sm text-muted-foreground">
+            O‘zbekiston ilmiy nashrlari uchun ochiq indeks prototipi.
+          </p>
+          <span className="text-xs text-muted-foreground">© 2026 IlmIz · MVP 0.1</span>
         </div>
       </footer>
 
-      {selectedJournal && <JournalDrawer journal={selectedJournal} onClose={() => setSelectedJournal(null)} />}
-      {picker}
+      {selectedJournal && (
+        <JournalSheet journal={selectedJournal} onClose={() => setSelectedJournal(null)} />
+      )}
+      {pickerOpen && (
+        <FieldPicker
+          groups={facets.fieldGroups}
+          selected={selectedFields}
+          onApply={(next) => {
+            setSelectedFields(next);
+            setPickerOpen(false);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
       {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
     </div>
   );

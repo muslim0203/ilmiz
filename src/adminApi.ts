@@ -82,6 +82,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAdminToken();
   const response = await fetch(path, {
     ...init,
+    // Admin huquqi endi sessiya cookie'si orqali ham tekshiriladi.
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",
