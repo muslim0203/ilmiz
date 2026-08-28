@@ -5,6 +5,7 @@ import {
   FileText,
   Layers3,
   RefreshCw,
+  Send,
   ShieldCheck,
   UsersRound,
 } from "lucide-react";
@@ -50,6 +51,9 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+
+// Maqola qabul qilish uchun yagona Telegram aloqa nuqtasi.
+const SUBMIT_TELEGRAM_URL = "https://t.me/zarifjon0203";
 
 export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: () => void }) {
   const [detail, setDetail] = useState<Journal>(journal);
@@ -389,11 +393,23 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
             </p>
           )}
 
-          <Button className="w-full" size="lg" asChild>
-            <a href={detail.website} target="_blank" rel="noreferrer">
-              Rasmiy saytga o‘tish <ExternalLink />
-            </a>
-          </Button>
+          <div className="space-y-2">
+            <Button className="w-full" size="lg" asChild>
+              <a href={SUBMIT_TELEGRAM_URL} target="_blank" rel="noreferrer">
+                <Send /> Telegram orqali maqola yuborish
+              </a>
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Maqolangizni yuborish uchun bosing — tahririyat bilan Telegramda bog‘lanasiz.
+            </p>
+            {detail.website && detail.website !== "#" && (
+              <Button variant="outline" className="w-full" size="lg" asChild>
+                <a href={detail.website} target="_blank" rel="noreferrer">
+                  Rasmiy saytga o‘tish <ExternalLink />
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
