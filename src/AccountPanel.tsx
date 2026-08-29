@@ -25,6 +25,7 @@ import {
   type AuthUser,
 } from "@/authApi";
 import { monogram } from "@/lib/format";
+import MyArticles from "@/MyArticles";
 
 const ORCID_HELP = "ORCID — tadqiqotchining xalqaro identifikatori. orcid.org da bepul olinadi.";
 
@@ -89,7 +90,7 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{user ? "Mening profilim" : "Tizimga kirish"}</DialogTitle>
           <DialogDescription>
@@ -246,6 +247,14 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
               </Button>
             </div>
           </form>
+        )}
+
+        {state === "ready" && user && (
+          <>
+            <Separator />
+            {/* Saqlangan ism bo'yicha qidiriladi, tahrirdagi qoralama bo'yicha emas. */}
+            <MyArticles displayName={user.displayName} />
+          </>
         )}
       </DialogContent>
     </Dialog>

@@ -1,3 +1,5 @@
+import type { Article } from "@/types";
+
 export type AuthUser = {
   id: number;
   provider: "orcid" | "google";
@@ -63,3 +65,48 @@ export const PROVIDER_LABELS: Record<string, string> = {
   orcid: "ORCID bilan kirish",
   google: "Google bilan kirish",
 };
+
+export type AuthorshipStats = {
+  articles: number;
+  journals: number;
+  firstYear: number | null;
+  lastYear: number | null;
+};
+
+/** Nomzod maqola — `confidence` qanchalik ishonchli mos kelganini bildiradi.
+ *
+ * `exact` — ism va familiya to'liq mos keldi.
+ * `partial` — jurnal faqat bosh harfni yozgan ("Karimov A."), shuning uchun
+ * bu boshqa odam ham bo'lishi mumkin. */
+export type ArticleSuggestion = Article & {
+  confidence: "exact" | "partial";
+  matchedAuthor: string;
+};
+
+export async function loadMyArticles(): Promise<{ articles: Article[]; stats: AuthorshipStats }> {
+  return request<{ articles: Article[]; stats: AuthorshipStats }>("/api/auth/me/articles");
+}
+
+export async function loadArticleSuggestions(): Promise<{
+  suggestions: ArticleSuggestion[];
+  needsFullName: boolean;
+}> {
+  return request<{ suggestions: ArticleSuggestion[]; needsFullName: boolean }>(
+    "/api/auth/me/article-suggestions",
+  );
+}
+
+export async function claimArticle(articleId: string): Promise<AuthorshipStats> {
+  const body = await request<{ stats: AuthorshipStats }>("/api/auth/me/articles", {
+    method: "POST",
+    body: JSON.stringify({ article_id: Number(articleId) }),
+  });
+  return body.stats;
+}
+
+export async function unclaimArticle(articleId: string): Promise<AuthorshipStats> {
+  const body = await request<{ stats: AuthorshipStats }>(`/api/auth/me/articles/${articleId}`, {
+    method: "DELETE",
+  });
+  return body.stats;
+}

@@ -8,6 +8,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import String, case, cast, distinct, func, or_, select
@@ -30,6 +31,7 @@ from .models import (
 from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
 from .services import auth as auth_service
+from .services import authorship
 from .services.search_text import query_words
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
@@ -37,6 +39,7 @@ from .services.profile_collector import collect_profile
 from .services.profile_queue import enqueue_profiles, process_profile_jobs, profile_queue_stats, profile_stats
 logger = logging.getLogger(__name__)
 
+from .services import seo
 from .services.taxonomy import FIELD_GROUPS, OTHER_GROUP, canonical_city, city_variants, field_group
 
 
@@ -54,6 +57,9 @@ app = FastAPI(
     description="OAK jurnallari va OAI-PMH maqolalar indeksi",
     lifespan=lifespan,
 )
+# Sitemap 25 000 URL, SEO qobig'i esa to'liq annotatsiya bilan ketadi —
+# siqilmasa TTFB va Core Web Vitals'ga urib ketadi.
+app.add_middleware(GZipMiddleware, minimum_size=800)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -284,20 +290,29 @@ def journal_counts(db: Session, journal_ids: list[int] | None = None) -> dict[in
     barcha maqola obyektlarini xotiraga yuklardi — 493 ta jurnal uchun 100 mingdan
     ortiq ORM obyekti va ~3 soniya.
     """
-    since = activity_since_year()
-    statement = (
-        select(
-            Article.journal_id,
-            func.count(),
-            func.count(distinct(_ISSUE_KEY)),
-            func.sum(case((Article.publication_year >= since, 1), else_=0)),
+    def compute() -> dict[int, tuple[int, int, int]]:
+        since = activity_since_year()
+        statement = (
+            select(
+                Article.journal_id,
+                func.count(),
+                func.count(distinct(_ISSUE_KEY)),
+                func.sum(case((Article.publication_year >= since, 1), else_=0)),
+            )
+            .where(Article.is_deleted.is_(False))
+            .group_by(Article.journal_id)
         )
-        .where(Article.is_deleted.is_(False))
-        .group_by(Article.journal_id)
-    )
-    if journal_ids is not None:
-        statement = statement.where(Article.journal_id.in_(journal_ids))
-    return {row[0]: (row[1], row[2], int(row[3] or 0)) for row in db.execute(statement)}
+        return {row[0]: (row[1], row[2], int(row[3] or 0)) for row in db.execute(statement)}
+
+    # `count(distinct volume|issue|year)` 104 000 qator ustidan ishlaydi va
+    # har bir katalog so‘rovida takrorlanardi (~300 ms). Qiymatlar faqat
+    # harvest’dan keyin o‘zgaradi, shuning uchun to‘liq xarita keshlanadi va
+    # kerakli jurnallar undan kesib olinadi.
+    everything: dict[int, tuple[int, int, int]] = seo.cached("journal_counts", compute)
+    if journal_ids is None:
+        return everything
+    wanted = set(journal_ids)
+    return {key: value for key, value in everything.items() if key in wanted}
 
 
 def journal_payload(
@@ -629,6 +644,20 @@ def list_articles(
     return [article_payload(article) for article in db.scalars(statement.offset(offset).limit(limit))]
 
 
+@app.get("/api/articles/{article_id}")
+def get_article(article_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
+    """Maqolaning to‘g‘ridan-to‘g‘ri sahifasi uchun — ro‘yxatdan qidirib
+    o‘tirmasdan bitta yozuvni oladi."""
+    article = db.scalar(
+        select(Article).where(Article.id == article_id).options(selectinload(Article.journal))
+    )
+    if article is None or article.is_deleted:
+        raise HTTPException(status_code=404, detail="Maqola topilmadi")
+    payload = article_payload(article)
+    payload["journalSlug"] = article.journal.slug if article.journal else None
+    return payload
+
+
 @admin.get("/sources")
 def list_sources(db: Session = Depends(get_db)) -> list[dict[str, object]]:
     sources = db.scalars(select(HarvestSource).options(selectinload(HarvestSource.journal)).order_by(HarvestSource.updated_at.desc()))
@@ -949,6 +978,67 @@ def auth_update_me(
     return {"user": auth_service.user_payload(user)}
 
 
+class ClaimInput(BaseModel):
+    article_id: int
+
+
+@auth.get("/me/articles")
+def auth_my_articles(
+    user: User = Depends(require_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Foydalanuvchi o‘ziniki deb tasdiqlagan maqolalar."""
+    return {
+        "articles": [article_payload(article) for article in authorship.claimed(db, user)],
+        "stats": authorship.stats(db, user),
+    }
+
+
+@auth.get("/me/article-suggestions")
+def auth_article_suggestions(
+    user: User = Depends(require_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Foydalanuvchi ismiga mos, hali tasdiqlanmagan maqolalar.
+
+    Bu faqat taxmin — mualliflik nomlar bo‘yicha aniqlanadi. Shuning uchun
+    hech narsa avtomatik qo‘shilmaydi va har bir nomzod qaysi muallif yozuvi
+    tufayli topilganini ko‘rsatadi.
+    """
+    if len(authorship.name_words(user.display_name)) < authorship.MIN_NAME_WORDS:
+        return {"suggestions": [], "needsFullName": True}
+    suggestions = authorship.suggest(db, user)
+    return {
+        "suggestions": [
+            {
+                **article_payload(item.article),
+                "confidence": item.confidence,
+                "matchedAuthor": item.matched_author,
+            }
+            for item in suggestions
+        ],
+        "needsFullName": False,
+    }
+
+
+@auth.post("/me/articles")
+def auth_claim_article(
+    payload: ClaimInput, user: User = Depends(require_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    try:
+        authorship.claim(db, user, payload.article_id)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return {"status": "ok", "stats": authorship.stats(db, user)}
+
+
+@auth.delete("/me/articles/{article_id}")
+def auth_unclaim_article(
+    article_id: int, user: User = Depends(require_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    if not authorship.unclaim(db, user, article_id):
+        raise HTTPException(status_code=404, detail="Bu maqola profilingizda yo‘q.")
+    return {"status": "ok", "stats": authorship.stats(db, user)}
+
+
 @auth.post("/logout")
 def auth_logout(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
     auth_service.revoke_session(db, request.cookies.get(auth_service.SESSION_COOKIE))
@@ -958,3 +1048,9 @@ def auth_logout(request: Request, db: Session = Depends(get_db)) -> JSONResponse
 
 
 app.include_router(auth)
+
+# Diqqat: SEO routerida `/{full_path:path}` catch-all bor. U shu yerda, hamma
+# API marshrutlaridan keyin ulanishi shart.
+from .seo_routes import router as seo_router  # noqa: E402
+
+app.include_router(seo_router)

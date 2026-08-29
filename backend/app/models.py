@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -176,6 +177,28 @@ class JournalProfileField(Base):
 
 class Article(Base):
     __tablename__ = "articles"
+
+    # Ro'yxat va SEO sahifalarining asosiy so'rovi: o'chirilmaganlar, yangi
+    # nashrdan eskisiga. Kompozit indekssiz SQLite 104 000 qatorni har safar
+    # vaqtinchalik B-daraxtda saralab, javobni ~180 ms ga cho'zardi.
+    __table_args__ = (
+        Index(
+            "ix_articles_feed",
+            "is_deleted",
+            text("publication_year DESC"),
+            text("id DESC"),
+        ),
+        # Jurnal sahifasi va yillik arxivlar. `ix_articles_feed` qo'shilgach
+        # SQLite jurnal bo'yicha so'rovlarda ham o'shani tanlab, butun
+        # jadvalni skanerlay boshlagandi.
+        Index(
+            "ix_articles_journal_feed",
+            "journal_id",
+            "is_deleted",
+            text("publication_year DESC"),
+            text("id DESC"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     journal_id: Mapped[int] = mapped_column(ForeignKey("journals.id", ondelete="CASCADE"), index=True)
@@ -422,6 +445,31 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     sessions: Mapped[list[UserSession]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    claimed_articles: Mapped[list["UserArticle"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class UserArticle(Base):
+    """Foydalanuvchi o'ziniki deb tasdiqlagan maqola.
+
+    Mualliflik nomlar bo'yicha taxmin qilinadi, shuning uchun avtomatik
+    bog'lamaymiz: tizim faqat nomzodlarni topadi, qaysi biri o'ziniki
+    ekanini foydalanuvchining o'zi tasdiqlaydi (Google Scholar singari).
+    """
+
+    __tablename__ = "user_articles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "article_id", name="user_article_uq"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), index=True)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[User] = relationship(back_populates="claimed_articles")
+    article: Mapped[Article] = relationship()
 
 
 class UserSession(Base):
