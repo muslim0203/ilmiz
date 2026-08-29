@@ -19,7 +19,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Journal, JournalContact, JournalProfileField
+from ..models import Journal, JournalContact, JournalProfile, JournalProfileField
+from . import completeness
 from .profile_collector import balance_parens as _balance_parens, is_valid_phone
 
 MANUAL_SOURCE = "admin:manual"
@@ -33,11 +34,20 @@ MIN_FOUNDED = 1860
 
 TEXT_FIELDS = ("name", "short_name", "publisher", "city", "website", "description")
 LIST_FIELDS = ("fields", "languages")
-EDITABLE = TEXT_FIELDS + LIST_FIELDS + ("issn", "eissn", "oak_status", "access", "founded")
+# Bular `journal_profiles` da turadi, `journals` da emas. To'liqlik bali
+# aynan shularni sanaydi, shuning uchun ularsiz qo'lda ishlashning ballga
+# ta'siri bo'lmasdi.
+PROFILE_FIELDS = ("summary", "address", "latest_issue")
+EDITABLE = (
+    TEXT_FIELDS
+    + LIST_FIELDS
+    + PROFILE_FIELDS
+    + ("issn", "eissn", "oak_status", "access", "founded")
+)
 
 # Bo'sh qoldirilishi mumkin bo'lgan maydonlar. Qolganlari majburiy — jurnalning
 # nomi yoki nashriyoti bo'sh bo'lib qolsa, yozuv ma'nosini yo'qotadi.
-NULLABLE = {"issn", "eissn", "founded", "website", "description"}
+NULLABLE = {"issn", "eissn", "founded", "website", "description", *PROFILE_FIELDS}
 
 
 class ValidationError(ValueError):
@@ -106,7 +116,7 @@ def clean(field: str, value: Any) -> Any:
         if text not in ACCESS_LEVELS:
             raise ValidationError(f"Kirish turi {sorted(ACCESS_LEVELS)} dan biri bo‘lsin")
         return text
-    if field in TEXT_FIELDS:
+    if field in TEXT_FIELDS or field in PROFILE_FIELDS:
         text = "" if value is None else str(value).strip()
         if not text:
             if field in NULLABLE:
@@ -188,15 +198,30 @@ def apply_edits(
     cleaned = {field: clean(field, value) for field, value in changes.items()}
     warnings = duplicate_issn_warnings(db, journal, cleaned)
 
+    profile = None
+    if any(field in PROFILE_FIELDS for field in cleaned):
+        profile = db.scalar(
+            select(JournalProfile).where(JournalProfile.journal_id == journal.id)
+        )
+        if profile is None:
+            # Profil hali yig'ilmagan bo'lsa ham qo'lda to'ldirish mumkin.
+            profile = JournalProfile(journal_id=journal.id, source_url=MANUAL_SOURCE)
+            db.add(profile)
+            db.flush()
+
     applied: dict[str, Any] = {}
     for field, value in cleaned.items():
-        if getattr(journal, field) == value:
+        target = profile if field in PROFILE_FIELDS else journal
+        if getattr(target, field) == value:
             continue
-        setattr(journal, field, value)
+        setattr(target, field, value)
         record_manual(db, journal, field, value)
         applied[field] = value
 
     if applied:
+        # Qo'lda kiritilgan ma'lumot to'liqlik baliga darhol ta'sir qilsin.
+        db.flush()
+        completeness.refresh(db, journal)
         db.commit()
         db.refresh(journal)
     return applied, warnings
@@ -204,9 +229,20 @@ def apply_edits(
 
 def editable_payload(db: Session, journal: Journal) -> dict[str, Any]:
     """Tahrirlash formasi uchun joriy qiymatlar va qaysilari qo'lda o'zgargani."""
+    profile = db.scalar(
+        select(JournalProfile).where(JournalProfile.journal_id == journal.id)
+    )
+    values: dict[str, Any] = {}
+    for field in EDITABLE:
+        source = profile if field in PROFILE_FIELDS else journal
+        values[field] = getattr(source, field, None) if source is not None else None
     return {
         "slug": journal.slug,
-        "values": {field: getattr(journal, field) for field in EDITABLE},
+        "values": values,
+        "completeness": {
+            "score": profile.completeness_score if profile else None,
+            "missing": completeness.missing_labels(db, journal),
+        },
         "manualFields": sorted(manually_edited(db, journal.id)),
         "updatedAt": journal.updated_at.isoformat() if journal.updated_at else None,
         "choices": {
@@ -316,6 +352,8 @@ def replace_contacts(
                 fetched_at=now,
             )
         )
+    db.flush()
+    completeness.refresh(db, journal)
     db.commit()
     db.refresh(journal)
     return contacts_payload(journal), warnings

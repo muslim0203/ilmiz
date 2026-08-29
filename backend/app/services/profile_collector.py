@@ -12,6 +12,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from . import completeness
 from ..models import (
     EditorialMember,
     Journal,
@@ -703,9 +704,11 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
         if value:
             db.add(JournalProfileField(journal=journal, field_name=field_name, value=value, source_url=source_url, confidence=confidence, verification_status="collected", fetched_at=now))
 
-    checks = [summary, address, contacts, members, policies, latest_issue, providers, journal.issn, journal.fields, journal.languages]
-    profile.completeness_score = round(100 * sum(bool(value) for value in checks) / len(checks), 1)
     db.add(profile)
+    # Ball bazadagi holatdan hisoblanadi (lokal o'zgaruvchilardan emas),
+    # shunda qo'lda tahrirdan keyin ham xuddi shu funksiya ishlatiladi.
+    db.flush()
+    completeness.refresh(db, journal)
     db.commit()
     db.refresh(profile)
     return profile

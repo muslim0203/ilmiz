@@ -865,6 +865,10 @@ class JournalEditInput(BaseModel):
     founded: int | None = None
     website: str | None = None
     description: str | None = None
+    # `journal_profiles` da turadi — to'liqlik bali aynan shularni sanaydi.
+    summary: str | None = None
+    address: str | None = None
+    latest_issue: str | None = None
 
 
 @admin.get("/journals")

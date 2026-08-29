@@ -32,6 +32,13 @@ const LIST_LABELS: Array<[keyof JournalEditValues, string]> = [
   ["fields", "Ilmiy sohalar"],
   ["languages", "Tillar"],
 ];
+// Bular `journal_profiles` da turadi va to'liqlik baliga bevosita ta'sir
+// qiladi — jurnal maydonlaridan alohida ko'rsatiladi.
+const PROFILE_LABELS: Array<[keyof JournalEditValues, string]> = [
+  ["summary", "Tavsif (profil)"],
+  ["address", "Manzil"],
+  ["latest_issue", "So‘nggi son"],
+];
 
 /** Har bir maydonni forma uchun matnga aylantiradi. */
 function toText(value: unknown): string {
@@ -222,6 +229,11 @@ export default function JournalEditor() {
         <form className="space-y-4" onSubmit={save}>
           <div className="flex items-center justify-between gap-2">
             <h4 className="min-w-0 truncate text-sm font-semibold">{record.values.name}</h4>
+            {record.completeness.score !== null && (
+              <Badge variant="outline" className="shrink-0 font-normal">
+                To‘liqlik {record.completeness.score}%
+              </Badge>
+            )}
             <Button
               type="button"
               size="sm"
@@ -313,9 +325,26 @@ export default function JournalEditor() {
             </Field>
           </div>
 
+          {PROFILE_LABELS.map(([field, label]) => (
+            <Field
+              key={field}
+              name={field}
+              label={label}
+              manual={record.manualFields.includes(field)}
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  value={draft[field] ?? ""}
+                  onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                />
+              )}
+            </Field>
+          ))}
+
           <Field
             name="description"
-            label="Tavsif"
+            label="Tavsif (katalog)"
             manual={record.manualFields.includes("description")}
           >
             {(id) => (
@@ -339,6 +368,17 @@ export default function JournalEditor() {
               <CheckCircle2 />
               <AlertDescription>{message}</AlertDescription>
             </Alert>
+          )}
+
+          {record.completeness.missing.length > 0 && (
+            <div className="rounded-lg border border-dashed p-3">
+              <p className="text-xs font-medium">
+                To‘liqlik uchun yetishmayapti ({record.completeness.missing.length}):
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {record.completeness.missing.join(", ")}
+              </p>
+            </div>
           )}
 
           <p className="text-xs leading-relaxed text-muted-foreground">

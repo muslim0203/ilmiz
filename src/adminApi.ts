@@ -151,6 +151,10 @@ export type JournalEditValues = {
   founded: number | null;
   website: string | null;
   description: string | null;
+  /** `journal_profiles` da turadi — to'liqlik bali aynan shularni sanaydi. */
+  summary: string | null;
+  address: string | null;
+  latest_issue: string | null;
 };
 
 export type ContactKind = "address" | "email" | "phone";
@@ -173,6 +177,8 @@ export type JournalEditRecord = {
   updatedAt: string | null;
   choices: { oakStatus: string[]; access: string[] };
   contacts: JournalContact[];
+  /** Ball 10 ta belgining nechtasi to'ldirilganini o'lchaydi. */
+  completeness: { score: number | null; missing: string[] };
 };
 
 export type JournalEditResult = JournalEditRecord & {

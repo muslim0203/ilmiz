@@ -149,6 +149,41 @@ darhol toza bo'ladi va muammo qaytmaydi.
 
 ---
 
+## Profil to'liqligi bali
+
+Ball 10 ta belgining nechtasi to'ldirilganini o'lchaydi, har biri 10%:
+tavsif, manzil, aloqa, tahririyat a'zolari, siyosatlar, so'nggi son,
+indekslanish, ISSN, sohalar, tillar.
+
+**Bu jurnalning sifati emas** — u ma'lumot to'liqligini o'lchaydi, xolos.
+Ball to'ldirilganini sanaydi, to'g'riligini emas: jQuery kodi «tavsif»
+sifatida turgan jurnal bo'sh qoldirgandan ko'ra baland ball olardi.
+Tozalash natijasida 28 ta jurnalning bali pasaydi — ma'lumot yaxshilandi,
+raqam esa haqiqatga yaqinlashdi.
+
+Hisob `services/completeness.py` da, bazadagi holatdan olinadi. Ilgari u
+`collect_profile` ichida, yig'ish paytidagi lokal o'zgaruvchilar ustidan
+bajarilardi — shuning uchun qo'lda kiritilgan ma'lumot ballga umuman
+ta'sir qilmasdi. Endi `apply_edits` va `replace_contacts` ham uni
+chaqiradi.
+
+Ikkita maydon nomi chalkash, ular boshqa-boshqa joyda:
+
+| Ball sanaydigan | Qayerda | Panelda |
+| --- | --- | --- |
+| `summary` | `journal_profiles.summary` | «Tavsif (profil)» |
+| — | `journals.description` | «Tavsif (katalog)» |
+| `address` | `journal_profiles.address` | «Manzil» |
+| `contacts` | `journal_contacts` | Aloqa bloki |
+
+Ya'ni aloqa blokidagi manzil yozuvi `address` belgisini yopmaydi.
+
+2026-08-29 da 443 profildan 316 tasining saqlangan bali hozirgi
+ma'lumotga mos kelmasdi (288 tasi past, 28 tasi baland ko'rsatilgan edi) —
+hammasi qayta hisoblandi.
+
+---
+
 ## Ma'lum muammolar
 
 - `source_records` da ~8300 yetim yozuv bor (maqolasi o'chirilgan, yozuvi
