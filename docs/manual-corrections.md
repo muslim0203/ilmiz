@@ -156,10 +156,26 @@ tavsif, manzil, aloqa, tahririyat a'zolari, siyosatlar, so'nggi son,
 indekslanish, ISSN, sohalar, tillar.
 
 **Bu jurnalning sifati emas** — u ma'lumot to'liqligini o'lchaydi, xolos.
-Ball to'ldirilganini sanaydi, to'g'riligini emas: jQuery kodi «tavsif»
-sifatida turgan jurnal bo'sh qoldirgandan ko'ra baland ball olardi.
-Tozalash natijasida 28 ta jurnalning bali pasaydi — ma'lumot yaxshilandi,
-raqam esa haqiqatga yaqinlashdi.
+
+Har bir belgi endi qiymat haqiqatan shu maydonga o'xshashini talab qiladi;
+ilgari «bo'sh emasmi» degan tekshiruv axlatni ham to'ldirilgan deb sanardi:
+
+| Belgi | Talab | Nega |
+| --- | --- | --- |
+| `summary` | `prose` dan o'tishi (≥60 belgi, sahifa kodi emas) | jQuery kodi tavsif o'rnida turardi |
+| `address` | `clean_address` uni o'zgartirmasligi | 29 tasida qoida matni/skript bor edi |
+| `contacts` | kamida bitta email yoki telefon | manzilning o'zi bog'lanish uchun yaramaydi |
+| `policies` | kamida bittasida matn bo'lishi | bo'sh siyosat yozuvi ma'lumot emas |
+| `latest_issue` | raqam bo'lishi | 238 tadan 48 tasi «Login», «Maqolalar», «Full Issue» edi |
+| `issn` | format to'g'ri bo'lishi | qo'lda yoki importdan buzuq qiymat kelishi mumkin |
+
+Tekshiruvlar kuchaytirilgach o'rtacha ball 47% dan **43.3%** ga tushdi.
+Raqam pasaydi, lekin haqiqatni ko'rsatadi.
+
+Matn tozalash qoidalari `services/text_clean.py` da — `profile_collector`,
+`completeness` va `journal_edit` uchalasi shu moduldan foydalanadi
+(ilgari ular `profile_collector` ga bog'langan edi va `completeness`
+qo'shilganda aylanma import chiqardi).
 
 Hisob `services/completeness.py` da, bazadagi holatdan olinadi. Ilgari u
 `collect_profile` ichida, yig'ish paytidagi lokal o'zgaruvchilar ustidan
@@ -180,7 +196,12 @@ Ya'ni aloqa blokidagi manzil yozuvi `address` belgisini yopmaydi.
 
 2026-08-29 da 443 profildan 316 tasining saqlangan bali hozirgi
 ma'lumotga mos kelmasdi (288 tasi past, 28 tasi baland ko'rsatilgan edi) —
-hammasi qayta hisoblandi.
+hammasi qayta hisoblandi. Tekshiruvlar kuchaytirilgach yana 68 tasi
+pasaydi.
+
+O'sha kuni `journal_profiles.address` ham tozalandi: 11 tasi qisqartirildi,
+18 tasi bo'shatildi. Ilgari faqat `journal_contacts` tozalangan, profil
+ustuni o'tkazib yuborilgan edi — ikkisiga ham bir xil axlat tushgan.
 
 ---
 

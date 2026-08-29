@@ -10,6 +10,8 @@ keyin ham chaqirish mumkin.
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -21,6 +23,10 @@ from ..models import (
     JournalPolicy,
     JournalProfile,
 )
+from .text_clean import clean_address, prose
+
+# ISSN formati: to'rt raqam, chiziqcha, uch raqam va nazorat belgisi.
+ISSN_RE = re.compile(r"^\d{4}-\d{3}[\dX]$", re.I)
 
 # Ball shu 10 belgining nechtasi to'ldirilganini o'lchaydi.
 # Yorliqlar admin panelda «nima yetishmayapti» ro'yxati uchun.
@@ -44,8 +50,45 @@ def _count(db: Session, model, journal_id: int) -> int:
     ) or 0
 
 
+def _usable_contacts(db: Session, journal_id: int) -> bool:
+    """Manzilning o'zi «aloqa ma'lumoti» emas — bog'lanish uchun kerak emas."""
+    return bool(
+        db.scalar(
+            select(JournalContact.id).where(
+                JournalContact.journal_id == journal_id,
+                JournalContact.kind.in_(("email", "phone")),
+            )
+        )
+    )
+
+
+def _has_policy_text(db: Session, journal_id: int) -> bool:
+    return bool(
+        db.scalar(
+            select(JournalPolicy.id).where(
+                JournalPolicy.journal_id == journal_id,
+                JournalPolicy.content.is_not(None),
+                JournalPolicy.content != "",
+            )
+        )
+    )
+
+
+def _is_issue_reference(value: str | None) -> bool:
+    """So'nggi son raqamsiz bo'lmaydi.
+
+    Scraper 238 tadan 48 tasiga sahifa tugmalarini yozib qo'ygan:
+    «Login», «Maqolalar», «Full Issue» — bular son ma'lumoti emas.
+    """
+    return bool(value) and any(char.isdigit() for char in value)
+
+
 def breakdown(db: Session, journal: Journal) -> dict[str, bool]:
     """Har bir belgi to'ldirilganmi.
+
+    Tekshiruv shunchaki «bo'sh emasmi» degani emas: axlat ham to'ldirilgan
+    hisoblanib ballni ko'tarardi. Endi har bir belgi qiymat haqiqatan shu
+    maydonga o'xshashini talab qiladi.
 
     Diqqat: `address` profil ustunidan olinadi, `journal_contacts` dagi
     manzil yozuvidan emas — bular ikki xil joy va bir-birini almashtirmaydi.
@@ -53,15 +96,19 @@ def breakdown(db: Session, journal: Journal) -> dict[str, bool]:
     profile = db.scalar(
         select(JournalProfile).where(JournalProfile.journal_id == journal.id)
     )
+    summary = profile.summary if profile else None
+    address = profile.address if profile else None
     return {
-        "summary": bool(profile and profile.summary),
-        "address": bool(profile and profile.address),
-        "contacts": _count(db, JournalContact, journal.id) > 0,
+        # `prose` qisqa qoldiq, sahifa kodi va menyuni rad etadi.
+        "summary": prose(summary) is not None,
+        # Saqlangan qiymat tozalashdan o'zgarmasa — bu haqiqatan manzil.
+        "address": bool(address) and clean_address(address) == address,
+        "contacts": _usable_contacts(db, journal.id),
         "editorial_members": _count(db, EditorialMember, journal.id) > 0,
-        "policies": _count(db, JournalPolicy, journal.id) > 0,
-        "latest_issue": bool(profile and profile.latest_issue),
+        "policies": _has_policy_text(db, journal.id),
+        "latest_issue": _is_issue_reference(profile.latest_issue if profile else None),
         "indexing_claims": _count(db, JournalIndexingClaim, journal.id) > 0,
-        "issn": bool(journal.issn),
+        "issn": bool(journal.issn) and bool(ISSN_RE.match(journal.issn.strip())),
         "fields": bool(journal.fields),
         "languages": bool(journal.languages),
     }

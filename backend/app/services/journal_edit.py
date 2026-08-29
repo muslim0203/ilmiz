@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Journal, JournalContact, JournalProfile, JournalProfileField
 from . import completeness
-from .profile_collector import balance_parens as _balance_parens, is_valid_phone
+from .text_clean import balance_parens as _balance_parens, is_valid_phone
 
 MANUAL_SOURCE = "admin:manual"
 MANUAL_STATUS = "manual"
