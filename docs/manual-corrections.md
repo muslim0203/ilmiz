@@ -90,6 +90,22 @@ ISSN takrorlansa saqlash bloklanmaydi, lekin ogohlantirish chiqadi: bazada
 allaqachon 16 ta takror bor va ularni tuzatish jarayonida vaqtinchalik
 ikkilanish bo'lishi tabiiy.
 
+### Aloqa ma'lumotlari
+
+Manzil, email va telefonlarni ham shu formadan tahrirlash mumkin. Ro'yxat
+butunlay almashtiriladi, lekin qiymati o'zgarmagan yozuv o'z manbasini
+saqlab qoladi — qayerdan olingani ma'lum bo'lib turadi.
+
+Tekshiruvlar: email formati; telefon uchun `is_valid_phone` (sana, ISSN va
+yillar ro'yxatini rad etadi); manzil uchun 400 belgi cheklovi — 23 ta
+«manzil» maydoniga butun tahririyat ro'yxati tushib qolgan.
+
+Telefon raqamlaridagi juftlashmagan qavslar avtomatik tuzatiladi. Scraper'ning
+`\+?\d[\d ()\-]{7,}\d` naqshi raqamdan boshlangani uchun `+998(71) 262-31-69`
+dan `+99871) 262-31-69` qolgan — **bazada hali 124 ta shunday yozuv bor**.
+Ochuvchi qavs qayerda turganini taxmin qilmaymiz (u `+998` dan keyin edi),
+shuning uchun ortiqcha qavs olib tashlanadi — raqam buzilmaydi.
+
 ---
 
 ## Ma'lum muammolar

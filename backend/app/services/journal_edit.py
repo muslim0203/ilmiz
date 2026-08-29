@@ -19,7 +19,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Journal, JournalProfileField
+from ..models import Journal, JournalContact, JournalProfileField
+from .profile_collector import is_valid_phone
 
 MANUAL_SOURCE = "admin:manual"
 MANUAL_STATUS = "manual"
@@ -223,3 +224,128 @@ __all__ = [
     "editable_payload",
     "manually_edited",
 ]
+
+
+# --- Aloqa ma'lumotlari ---------------------------------------------------
+
+CONTACT_KINDS = ("address", "email", "phone")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
+MAX_ADDRESS = 400
+KIND_LABELS = {"address": "Manzil", "email": "Email", "phone": "Telefon"}
+
+
+def _balance_parens(value: str) -> str:
+    """Juftlashmagan qavslarni olib tashlaydi.
+
+    Scraper'ning `\+?\d[\d ()\-]{7,}\d` naqshi raqamdan boshlanadi,
+    shuning uchun `+998(71) 262-31-69` dan `+99871) 262-31-69` qolgan —
+    bazada 127 ta shunday yozuv bor. Ochuvchi qavsni qayerga qo'yishni
+    taxmin qilmaymiz: ortiqcha qavsni olib tashlash raqamni buzmaydi.
+    """
+    depth = 0
+    kept: list[str] = []
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                continue
+            depth -= 1
+        kept.append(char)
+    if depth:  # ochilgan, lekin yopilmagan
+        remaining = depth
+        result = []
+        for char in reversed(kept):
+            if char == "(" and remaining:
+                remaining -= 1
+                continue
+            result.append(char)
+        kept = list(reversed(result))
+    return re.sub(r"\s{2,}", " ", "".join(kept)).strip()
+
+
+def clean_contact(kind: str, value: str, label: str | None) -> tuple[str, str, str | None]:
+    """Bitta aloqa yozuvini tekshiradi va normal shaklga keltiradi."""
+    kind = (kind or "").strip()
+    if kind not in CONTACT_KINDS:
+        raise ValidationError(f"Aloqa turi {list(CONTACT_KINDS)} dan biri bo‘lsin")
+    text = (value or "").strip()
+    if not text:
+        raise ValidationError("Aloqa qiymati bo‘sh bo‘lmasin")
+
+    if kind == "email":
+        text = text.lower()
+        if not EMAIL_RE.match(text):
+            raise ValidationError(f"Email manzili noto‘g‘ri: {value!r}")
+    elif kind == "phone":
+        text = _balance_parens(text)
+        # `is_valid_phone` sana, ISSN va yillar ro'yxatini telefondan ajratadi.
+        if not is_valid_phone(text):
+            raise ValidationError(f"Telefon raqami noto‘g‘ri: {value!r}")
+    else:
+        if len(text) > MAX_ADDRESS:
+            raise ValidationError(
+                f"Manzil {MAX_ADDRESS} belgidan uzun bo‘lmasin (hozir {len(text)}). "
+                "Tahririyat ro‘yxati manzil emas."
+            )
+
+    clean_label = (label or "").strip() or KIND_LABELS[kind]
+    return kind, text, clean_label
+
+
+def contacts_payload(journal: Journal) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": contact.id,
+            "kind": contact.kind,
+            "label": contact.label,
+            "value": contact.value,
+            "sourceUrl": contact.source_url,
+            "isManual": contact.source_url == MANUAL_SOURCE,
+        }
+        for contact in sorted(journal.contacts, key=lambda item: (item.kind, item.id))
+    ]
+
+
+def replace_contacts(
+    db: Session, journal: Journal, rows: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Jurnalning aloqa ro'yxatini butunlay almashtiradi.
+
+    Hammasi avval tekshiriladi — bittasi xato bo'lsa hech narsa o'zgarmaydi.
+    O'zgarmagan yozuvning manbasi saqlanadi, shunda qayerdan olingani
+    ma'lum bo'lib qoladi.
+    """
+    cleaned: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+    warnings: list[str] = []
+    for row in rows:
+        kind, value, label = clean_contact(
+            str(row.get("kind", "")), str(row.get("value", "")), row.get("label")
+        )
+        if (kind, value) in seen:
+            warnings.append(f"Takrorlangan yozuv tashlab ketildi: {value}")
+            continue
+        seen.add((kind, value))
+        cleaned.append((kind, value, label))
+
+    previous = {(contact.kind, contact.value): contact.source_url for contact in journal.contacts}
+    now = datetime.now(timezone.utc)
+    for contact in list(journal.contacts):
+        db.delete(contact)
+    db.flush()
+    for kind, value, label in cleaned:
+        db.add(
+            JournalContact(
+                journal_id=journal.id,
+                kind=kind,
+                label=label,
+                value=value,
+                # Yangi yoki tuzatilgan yozuv qo'lda kiritilgan hisoblanadi.
+                source_url=previous.get((kind, value), MANUAL_SOURCE),
+                fetched_at=now,
+            )
+        )
+    db.commit()
+    db.refresh(journal)
+    return contacts_payload(journal), warnings

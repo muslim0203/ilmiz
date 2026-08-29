@@ -3,9 +3,14 @@ import unittest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.models import Base, Journal, JournalProfileField
+from backend.app.models import Base, Journal, JournalContact, JournalProfileField
 from backend.app.services import journal_edit
-from backend.app.services.journal_edit import ValidationError, clean
+from backend.app.services.journal_edit import (
+    ValidationError,
+    _balance_parens,
+    clean,
+    clean_contact,
+)
 
 
 class CleanTest(unittest.TestCase):
@@ -136,6 +141,131 @@ class ApplyEditsTest(unittest.TestCase):
         self.assertEqual(payload["manualFields"], ["website"])
         self.assertEqual(payload["values"]["website"], "https://a.uz")
 
+
+class BalanceParensTest(unittest.TestCase):
+    """Scraper qavs bilan boshlanadigan raqamlarni kesib olgan."""
+
+    def test_drops_unmatched_closing(self) -> None:
+        self.assertEqual(_balance_parens("+99871) 262-31-69"), "+99871 262-31-69")
+
+    def test_drops_unmatched_opening(self) -> None:
+        self.assertEqual(_balance_parens("(0367 225-40-42"), "0367 225-40-42")
+
+    def test_keeps_balanced_pair(self) -> None:
+        self.assertEqual(_balance_parens("+998(71) 262-31-69"), "+998(71) 262-31-69")
+
+    def test_collapses_double_spaces(self) -> None:
+        self.assertEqual(_balance_parens("71)  244  35"), "71 244 35")
+
+
+class CleanContactTest(unittest.TestCase):
+    def test_email_is_lowercased(self) -> None:
+        kind, value, label = clean_contact("email", "  INFO@Test.UZ ", None)
+        self.assertEqual((kind, value, label), ("email", "info@test.uz", "Email"))
+
+    def test_bad_email_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            clean_contact("email", "info@test", None)
+
+    def test_phone_is_normalised(self) -> None:
+        _, value, _ = clean_contact("phone", "0367) 225-40-42", None)
+        self.assertEqual(value, "0367 225-40-42")
+
+    def test_issn_is_not_a_phone(self) -> None:
+        with self.assertRaises(ValidationError):
+            clean_contact("phone", "3093-8805", None)
+
+    def test_date_is_not_a_phone(self) -> None:
+        with self.assertRaises(ValidationError):
+            clean_contact("phone", "2024-07-08 04", None)
+
+    def test_long_address_rejected(self) -> None:
+        """Ba'zi «manzil» maydonlariga butun tahririyat ro'yxati tushib qolgan."""
+        with self.assertRaises(ValidationError) as caught:
+            clean_contact("address", "A" * 500, None)
+        self.assertIn("Tahririyat ro‘yxati manzil emas", str(caught.exception))
+
+    def test_custom_label_is_kept(self) -> None:
+        _, _, label = clean_contact("email", "a@b.uz", " Bosh muharrir ")
+        self.assertEqual(label, "Bosh muharrir")
+
+    def test_unknown_kind_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            clean_contact("telegram", "@kanal", None)
+
+    def test_empty_value_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            clean_contact("email", "   ", None)
+
+
+class ReplaceContactsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        self.db = sessionmaker(bind=engine)()
+        self.journal = Journal(
+            slug="test", name="Jurnal", short_name="J", publisher="N", city="Toshkent",
+            fields=[], languages=[], oak_status="active", access="unknown",
+        )
+        self.db.add(self.journal)
+        self.db.commit()
+        self.db.add(
+            JournalContact(
+                journal_id=self.journal.id, kind="email", label="Email",
+                value="eski@test.uz", source_url="https://jurnal.uz/contact",
+            )
+        )
+        self.db.commit()
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def test_replaces_the_list(self) -> None:
+        contacts, warnings = journal_edit.replace_contacts(
+            self.db, self.journal,
+            [{"kind": "phone", "value": "0367) 225-40-42", "label": None}],
+        )
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]["value"], "0367 225-40-42")
+        self.assertTrue(contacts[0]["isManual"])
+
+    def test_unchanged_row_keeps_its_source(self) -> None:
+        """Tegilmagan yozuv qayerdan olingani ma'lum bo'lib qolsin."""
+        contacts, _ = journal_edit.replace_contacts(
+            self.db, self.journal,
+            [{"kind": "email", "value": "eski@test.uz", "label": "Email"}],
+        )
+        self.assertEqual(contacts[0]["sourceUrl"], "https://jurnal.uz/contact")
+        self.assertFalse(contacts[0]["isManual"])
+
+    def test_duplicates_are_dropped_with_a_warning(self) -> None:
+        contacts, warnings = journal_edit.replace_contacts(
+            self.db, self.journal,
+            [
+                {"kind": "email", "value": "a@b.uz", "label": None},
+                {"kind": "email", "value": "a@b.uz", "label": None},
+            ],
+        )
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(len(warnings), 1)
+
+    def test_invalid_row_changes_nothing(self) -> None:
+        with self.assertRaises(ValidationError):
+            journal_edit.replace_contacts(
+                self.db, self.journal,
+                [
+                    {"kind": "email", "value": "yangi@test.uz", "label": None},
+                    {"kind": "email", "value": "buzuq", "label": None},
+                ],
+            )
+        self.db.rollback()
+        remaining = [contact.value for contact in self.journal.contacts]
+        self.assertEqual(remaining, ["eski@test.uz"])
+
+    def test_empty_list_clears_contacts(self) -> None:
+        contacts, _ = journal_edit.replace_contacts(self.db, self.journal, [])
+        self.assertEqual(contacts, [])
 
 if __name__ == "__main__":
     unittest.main()

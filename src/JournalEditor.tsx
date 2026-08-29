@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import ContactEditor from "@/ContactEditor";
 import {
   loadJournalForEdit,
   saveJournal,
@@ -104,6 +105,10 @@ export default function JournalEditor() {
     event.preventDefault();
     setSearching(true);
     setError(null);
+    // Ochiq forma yopilmasa, natijalar ro'yxati ko'rinmay qoladi.
+    setRecord(null);
+    setMessage(null);
+    setWarnings([]);
     try {
       const data = await searchJournals(query);
       setResults(data.journals);
@@ -345,6 +350,15 @@ export default function JournalEditor() {
             {saving ? "Saqlanmoqda..." : "Saqlash"}
           </Button>
         </form>
+      )}
+
+      {record && (
+        <>
+          <Separator />
+          {/* Alohida saqlanadi: aloqa ro'yxati butunlay almashtiriladi,
+              jurnal maydonlari esa faqat o'zgarganlari yuboriladi. */}
+          <ContactEditor slug={record.slug} initial={record.contacts} />
+        </>
       )}
     </div>
   );

@@ -153,6 +153,18 @@ export type JournalEditValues = {
   description: string | null;
 };
 
+export type ContactKind = "address" | "email" | "phone";
+
+export type JournalContact = {
+  id?: number;
+  kind: ContactKind;
+  label: string | null;
+  value: string;
+  sourceUrl?: string;
+  /** Qo'lda kiritilgan yoki tuzatilgan yozuv. */
+  isManual?: boolean;
+};
+
 export type JournalEditRecord = {
   slug: string;
   values: JournalEditValues;
@@ -160,6 +172,7 @@ export type JournalEditRecord = {
   manualFields: string[];
   updatedAt: string | null;
   choices: { oakStatus: string[]; access: string[] };
+  contacts: JournalContact[];
 };
 
 export type JournalEditResult = JournalEditRecord & {
@@ -183,4 +196,16 @@ export function saveJournal(slug: string, changes: Partial<JournalEditValues>) {
     method: "PATCH",
     body: JSON.stringify(changes),
   });
+}
+
+export function saveContacts(slug: string, contacts: JournalContact[]) {
+  return request<{ contacts: JournalContact[]; warnings: string[] }>(
+    `/api/admin/journals/${encodeURIComponent(slug)}/contacts`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        contacts: contacts.map(({ kind, value, label }) => ({ kind, value, label })),
+      }),
+    },
+  );
 }

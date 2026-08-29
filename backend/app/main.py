@@ -896,12 +896,52 @@ def admin_journals(
     }
 
 
-@admin.get("/journals/{slug}")
-def admin_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
+class ContactRow(BaseModel):
+    kind: str
+    value: str
+    label: str | None = None
+
+
+class ContactsInput(BaseModel):
+    """Butun ro‘yxat almashtiriladi — forma bitta tugma bilan saqlanadi."""
+
+    contacts: list[ContactRow]
+
+
+def _journal_or_404(slug: str, db: Session) -> Journal:
     journal = db.scalar(select(Journal).where(Journal.slug == slug))
     if journal is None:
         raise HTTPException(status_code=404, detail="Jurnal topilmadi")
-    return journal_edit.editable_payload(db, journal)
+    return journal
+
+
+@admin.get("/journals/{slug}")
+def admin_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    journal = _journal_or_404(slug, db)
+    return {
+        **journal_edit.editable_payload(db, journal),
+        "contacts": journal_edit.contacts_payload(journal),
+    }
+
+
+@admin.put("/journals/{slug}/contacts")
+def admin_edit_contacts(
+    slug: str, payload: ContactsInput, db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Aloqa ma‘lumotlarini almashtiradi.
+
+    Scraper telefon raqamlarini buzib olgan (bazada 127 ta juftlashmagan
+    qavsli yozuv) va ba‘zi «manzil» maydonlariga butun tahririyat ro‘yxati
+    tushib qolgan — ularni shu yerdan tuzatiladi.
+    """
+    journal = _journal_or_404(slug, db)
+    try:
+        contacts, warnings = journal_edit.replace_contacts(
+            db, journal, [row.model_dump() for row in payload.contacts]
+        )
+    except journal_edit.ValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"contacts": contacts, "warnings": warnings}
 
 
 @admin.patch("/journals/{slug}")
@@ -914,9 +954,7 @@ def admin_edit_journal(
     tekshirgan odamning tuzatishi ustun turadi va `manual` belgisi bilan
     saqlanadi.
     """
-    journal = db.scalar(select(Journal).where(Journal.slug == slug))
-    if journal is None:
-        raise HTTPException(status_code=404, detail="Jurnal topilmadi")
+    journal = _journal_or_404(slug, db)
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise HTTPException(status_code=422, detail="O‘zgartirish uchun maydon yuborilmadi")
@@ -928,6 +966,7 @@ def admin_edit_journal(
         "applied": sorted(applied),
         "warnings": warnings,
         **journal_edit.editable_payload(db, journal),
+        "contacts": journal_edit.contacts_payload(journal),
     }
 
 
