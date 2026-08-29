@@ -36,6 +36,63 @@ DATE_LIKE_RE = re.compile(r"\b(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b")
 ISSN_LIKE_RE = re.compile(r"^\d{4}-\d{3}[\dXx](?:\s.*)?$")
 
 
+# Aloqa sahifasidan manzil olganda yonidagi matn ham qo'shilib ketadi:
+# tahririyat a'zolari ro'yxati, `document.write(unescape(...))` bilan
+# yashirilgan email, yoki butunlay boshqa sahifa (mualliflar uchun qoida,
+# maxfiylik siyosati). Shu belgilardan keyingisi manzil emas.
+ADDRESS_JUNK_RE = re.compile(
+    r"(?i)document\.write|principal contact|support contact|"
+    r"представитель редакции|представитель технической|"
+    r"editorial representative|tahririyat vakili|"
+    r"\bтелефон\b|\btel\.?:|\btelefon\b|\bphone\b"
+)
+# «Manzil:» dan keyin haqiqiy manzil turadi.
+ADDRESS_MARKER_RE = re.compile(r"(?i)(?:tahririyat\s+)?manzil(?:i)?\s*:|адрес\s*:")
+# Manzilda ko'cha/shahar so'zi bo'ladi. «manzil» so'zining o'zi yaramaydi —
+# «elektron manzil», «IP-manzili» hamma joyda uchraydi.
+PLACE_WORDS_RE = re.compile(
+    r"(?i)ko[‘'ʻ`]?cha|kocha|shahri|shahar|tuman|viloyat|mavze|qo[‘'ʻ`]?rg|"
+    r"\buy\b|-uy|xona|qavat|bino|"
+    r"street|district|\bcity\b|building|\bstr\b|avenue|\broad\b|"
+    r"к[ўу]часи|улиц|город|район|проспект|\bдом\b|шох"
+)
+# Raqamlangan band — qoida matni ("6. Maqolaning...", "1) sarlavha:").
+NUMBERED_CLAUSE_RE = re.compile(r"^\s*\d+(?:\.\d+)*\s*[.)]\s")
+MIN_ADDRESS_LENGTH = 15
+
+
+def clean_address(value: str | None) -> str | None:
+    """Manzil matnidan begona qismni kesadi, manzil bo'lmasa `None`.
+
+    Qoida ataylab ehtiyotkor — shubhalisi saqlanadi. «Manzilga o'xshamasa
+    tashla» degan qat'iy qoida haqiqiy manzillarni ham yeb qo'yardi:
+    «114, Shota Rustaveli, Tashkent, Uzbekistan» da ko'cha so'zi yo'q,
+    «г.Ташкент, М.Улугбекский район» da esa raqam yo'q.
+    """
+    if not value:
+        return None
+    cut = ADDRESS_JUNK_RE.search(value)
+    head = value if cut is None else value[: cut.start()]
+    marker = None
+    for marker in ADDRESS_MARKER_RE.finditer(head):
+        pass  # oxirgisi kerak
+    if cut is None and marker is None:
+        text = value
+    else:
+        source = head if marker is None else head[marker.end():]
+        text = re.sub(r"\s{2,}", " ", source).strip().strip(" ,;–—-").strip()
+
+    if len(text) < MIN_ADDRESS_LENGTH and not re.search(r"\d|@", text):
+        return None
+    if NUMBERED_CLAUSE_RE.match(text):
+        return None
+    placed = bool(re.search(r"\d", text)) and bool(PLACE_WORDS_RE.search(text))
+    if len(text) > 100:
+        # Uzun matn manzil tuzilishisiz — sahifadan tushgan boshqa matn.
+        return text if placed else None
+    return text if (re.search(r"\d|@", text) or PLACE_WORDS_RE.search(text)) else None
+
+
 def balance_parens(value: str) -> str:
     """Juftlashmagan qavslarni olib tashlaydi.
 
@@ -323,7 +380,7 @@ def fetch_pages(website: str, timeout: float = 20.0) -> dict[str, ParsedPage]:
 # belgilardan keyingi hamma narsani kesamiz.
 BOILERPLATE_RE = re.compile(
     r"(?i)"
-    r"\$\(function|\$\(document|var\s+\w+\s*=|JSON\.parse|<script|"
+    r"\$\(function|\$\(document|\bvar\s+\w+\s*=|JSON\.parse|<script|"
     r"\.addClass\(|\.removeClass\(|"
     r"your browser does not support html5|"
     r"all rights reserved|copyright\s*©|©\s*\d{4}|"
@@ -508,6 +565,7 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
     profile = journal.profile or JournalProfile(journal=journal)
     profile.summary = summary
     profile.aims_scope = aims_scope
+    address = clean_address(address)
     profile.address = compact(address, 1000)
     profile.latest_issue = latest_issue
     profile.source_url = about.url if about else home.url

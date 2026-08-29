@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from harvester.oai_harvester import OAIError, OAIRecord, harvest, identify, list_metadata_formats, metadata_from_xml
 
+from . import seo
 from .search_text import article_search_text
 
 from ..db import SessionLocal
@@ -114,7 +115,7 @@ def _language(metadata: dict[str, list[str]]) -> str | None:
     return mapping.get(value.casefold(), value)
 
 
-# Bu belgilar so‘z ichida ham uchraydi. `` bo‘lmasa "ECONOMY" dagi "no"
+# Bu belgilar so‘z ichida ham uchraydi. `\b` bo‘lmasa "ECONOMY" dagi "no"
 # issue = "MY" ni, "INNOVATION" dagi "no" issue = "vation" ni, kirilcha
 # "автоматики" dagi "том" esa volume = "ки" ni berardi. Qiymat raqamdan
 # boshlanishi ham talab qilinadi — haqiqiy jild/son doim shunday.
@@ -417,6 +418,9 @@ def ingest_source(db: Session, source: HarvestSource, *, from_date: str | None, 
     source.last_attempt_at = run.finished_at
     db.commit()
     db.refresh(run)
+    # Maqola sanoqlari SEO sahifalari va katalog uchun keshlanadi; harvest
+    # ularni o‘zgartirgan bo‘lishi mumkin.
+    seo.reset_cache()
     return run
 
 

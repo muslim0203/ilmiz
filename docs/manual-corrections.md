@@ -102,8 +102,34 @@ butunlay almashtiriladi, lekin qiymati o'zgarmagan yozuv o'z manbasini
 saqlab qoladi — qayerdan olingani ma'lum bo'lib turadi.
 
 Tekshiruvlar: email formati; telefon uchun `is_valid_phone` (sana, ISSN va
-yillar ro'yxatini rad etadi); manzil uchun 400 belgi cheklovi — 23 ta
-«manzil» maydoniga butun tahririyat ro'yxati tushib qolgan.
+yillar ro'yxatini rad etadi); manzil uchun 400 belgi cheklovi.
+
+### Manzillarni tozalash — 2026-08-29
+
+«Manzil» maydoniga aloqa sahifasidagi yonma-yon matn ham tushib qolgan edi:
+tahririyat a'zolari ro'yxati, `document.write(unescape(...))` bilan
+yashirilgan email kodi, va butunlay boshqa sahifa (mualliflar uchun qoida,
+maxfiylik siyosati). 68 tadan 11 tasi qisqartirildi, 18 tasi o'chirildi.
+
+`profile_collector.clean_address` uch bosqichda ishlaydi: axlat boshlangan
+joydan kesadi, matnda «Manzil:» belgisi bo'lsa undan keyingi qismni oladi
+(oxirgi uchrashini — «telegram manzili:» ham mos keladi), so'ng qolgani
+manzil bo'la oladimi deb baholaydi.
+
+Qoida **ataylab ehtiyotkor**: shubhali yozuv saqlanadi. «Manzilga o'xshamasa
+o'chir» degan qat'iy qoida haqiqiy manzillarni ham yeb qo'yardi —
+`114, Shota Rustaveli, Tashkent, Uzbekistan` da ko'cha so'zi yo'q,
+`г.Ташкент, М.Улугбекский район` da raqam yo'q, pochta indeksining o'zi
+(`100197`) esa to'liq manzil emas, lekin xato ham emas.
+
+### Regex naqshlaridagi backspace
+
+Patch skriptlari `` ni xom bo'lmagan Python satrida yozganda u so'z
+chegarasi emas, **backspace belgisiga (0x08)** aylanib faylga yozilgan.
+Natijada `tel\.?:` naqshi hech qachon mos kelmagan. 2026-08-29 da
+`profile_collector.py` dan 18 ta, `ingest.py` dan 1 ta (izohda) topilib
+tuzatildi — jumladan `BOILERPLATE_RE` dagi `var` ham ishlamay turgan edi.
+Bunday naqsh yozganda natijani albatta sinab ko'rish kerak.
 
 Telefon raqamlaridagi juftlashmagan qavslar avtomatik tuzatiladi. Scraper'ning
 `\+?\d[\d ()\-]{7,}\d` naqshi raqamdan boshlangani uchun `+998(71) 262-31-69`
