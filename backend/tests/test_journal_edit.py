@@ -1,6 +1,6 @@
 import unittest
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.models import Base, Journal, JournalContact, JournalProfileField
@@ -266,6 +266,73 @@ class ReplaceContactsTest(unittest.TestCase):
     def test_empty_list_clears_contacts(self) -> None:
         contacts, _ = journal_edit.replace_contacts(self.db, self.journal, [])
         self.assertEqual(contacts, [])
+
+class ManualDataSurvivesRecollectionTest(unittest.TestCase):
+    """Profil qayta yig'ilganda admin kiritgani o'chib ketmasin.
+
+    `collect_profile` aloqa yozuvlari va provenance qatorlarini butunlay
+    o'chirib qayta yozardi — ya'ni qo'lda kiritilgan tuzatish ham,
+    "bu maydonga tegmang" belgisi ham yo'qolardi.
+    """
+
+    def setUp(self) -> None:
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        self.db = sessionmaker(bind=engine)()
+        self.journal = Journal(
+            slug="test", name="Jurnal", short_name="J", publisher="N", city="Toshkent",
+            fields=[], languages=[], oak_status="active", access="unknown",
+        )
+        self.db.add(self.journal)
+        self.db.commit()
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def test_delete_query_keeps_manual_contacts(self) -> None:
+        self.db.add_all([
+            JournalContact(
+                journal_id=self.journal.id, kind="phone", label="Telefon",
+                value="+998 71 262-31-69", source_url=journal_edit.MANUAL_SOURCE,
+            ),
+            JournalContact(
+                journal_id=self.journal.id, kind="email", label="Email",
+                value="scraped@test.uz", source_url="https://jurnal.uz/contact",
+            ),
+        ])
+        self.db.commit()
+
+        # `collect_profile` ichidagi tozalash shartining aynan o'zi.
+        self.db.execute(
+            delete(JournalContact).where(
+                JournalContact.journal_id == self.journal.id,
+                JournalContact.source_url != journal_edit.MANUAL_SOURCE,
+            )
+        )
+        self.db.commit()
+
+        remaining = [contact.value for contact in self.journal.contacts]
+        self.assertEqual(remaining, ["+998 71 262-31-69"])
+
+    def test_delete_query_keeps_manual_provenance(self) -> None:
+        journal_edit.apply_edits(self.db, self.journal, {"city": "Samarqand"})
+        self.db.add(
+            JournalProfileField(
+                journal_id=self.journal.id, field_name="summary", value="yig‘ilgan",
+                source_url="https://jurnal.uz", verification_status="collected",
+            )
+        )
+        self.db.commit()
+
+        self.db.execute(
+            delete(JournalProfileField).where(
+                JournalProfileField.journal_id == self.journal.id,
+                JournalProfileField.verification_status != journal_edit.MANUAL_STATUS,
+            )
+        )
+        self.db.commit()
+
+        self.assertEqual(journal_edit.manually_edited(self.db, self.journal.id), {"city"})
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Journal, JournalContact, JournalProfileField
-from .profile_collector import is_valid_phone
+from .profile_collector import balance_parens as _balance_parens, is_valid_phone
 
 MANUAL_SOURCE = "admin:manual"
 MANUAL_STATUS = "manual"
@@ -232,36 +232,6 @@ CONTACT_KINDS = ("address", "email", "phone")
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
 MAX_ADDRESS = 400
 KIND_LABELS = {"address": "Manzil", "email": "Email", "phone": "Telefon"}
-
-
-def _balance_parens(value: str) -> str:
-    """Juftlashmagan qavslarni olib tashlaydi.
-
-    Scraper'ning `\+?\d[\d ()\-]{7,}\d` naqshi raqamdan boshlanadi,
-    shuning uchun `+998(71) 262-31-69` dan `+99871) 262-31-69` qolgan —
-    bazada 127 ta shunday yozuv bor. Ochuvchi qavsni qayerga qo'yishni
-    taxmin qilmaymiz: ortiqcha qavsni olib tashlash raqamni buzmaydi.
-    """
-    depth = 0
-    kept: list[str] = []
-    for char in value:
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            if depth == 0:
-                continue
-            depth -= 1
-        kept.append(char)
-    if depth:  # ochilgan, lekin yopilmagan
-        remaining = depth
-        result = []
-        for char in reversed(kept):
-            if char == "(" and remaining:
-                remaining -= 1
-                continue
-            result.append(char)
-        kept = list(reversed(result))
-    return re.sub(r"\s{2,}", " ", "".join(kept)).strip()
 
 
 def clean_contact(kind: str, value: str, label: str | None) -> tuple[str, str, str | None]:

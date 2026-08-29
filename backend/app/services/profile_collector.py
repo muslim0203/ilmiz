@@ -9,7 +9,7 @@ from html.parser import HTMLParser
 from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -24,6 +24,8 @@ from ..models import (
     JournalSection,
 )
 
+MANUAL_SOURCE = "admin:manual"
+MANUAL_STATUS = "manual"
 USER_AGENT = "Mozilla/5.0 (compatible; IlmIzJournalProfiler/0.4; +public scholarly metadata index)"
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 PHONE_RE = re.compile(r"(?:\+?\d[\d ()\-]{7,}\d)")
@@ -32,6 +34,36 @@ PHONE_RE = re.compile(r"(?:\+?\d[\d ()\-]{7,}\d)")
 # raqamlari ham telefon bo‘lib yozilardi — 1 185 tadan 556 tasi shunday edi.
 DATE_LIKE_RE = re.compile(r"\b(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\b")
 ISSN_LIKE_RE = re.compile(r"^\d{4}-\d{3}[\dXx](?:\s.*)?$")
+
+
+def balance_parens(value: str) -> str:
+    """Juftlashmagan qavslarni olib tashlaydi.
+
+    `PHONE_RE` raqamdan boshlanadi, shuning uchun `+998(71) 262-31-69` dan
+    `+99871) 262-31-69` qolgan — bazada 127 ta shunday yozuv topilgan.
+    Ochuvchi qavs qayerda turganini taxmin qilmaymiz: ortiqchasini olib
+    tashlash raqamni buzmaydi.
+    """
+    depth = 0
+    kept: list[str] = []
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                continue
+            depth -= 1
+        kept.append(char)
+    if depth:  # ochilgan, lekin yopilmagan
+        remaining = depth
+        result: list[str] = []
+        for char in reversed(kept):
+            if char == "(" and remaining:
+                remaining -= 1
+                continue
+            result.append(char)
+        kept = list(reversed(result))
+    return re.sub(r"\s{2,}", " ", "".join(kept)).strip()
 
 
 def is_valid_phone(value: str) -> bool:
@@ -516,20 +548,48 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
         journal.languages = sorted({*journal.languages, *detected_languages})
         profile.submission_languages = detected_languages
 
-    for model in (JournalContact, EditorialMember, JournalPolicy, JournalSection, JournalIndexingClaim, JournalLink, JournalProfileField):
+    for model in (EditorialMember, JournalPolicy, JournalSection, JournalIndexingClaim, JournalLink):
         db.execute(delete(model).where(model.journal_id == journal.id))
+    # Admin qo'lda kiritgan ma'lumot qayta yig'ishda yo'qolmasin: aloqa
+    # yozuvlarining manbasi `admin:manual` bo'lganlari va `manual` belgili
+    # provenance qatorlari saqlanadi.
+    db.execute(
+        delete(JournalContact).where(
+            JournalContact.journal_id == journal.id,
+            JournalContact.source_url != MANUAL_SOURCE,
+        )
+    )
+    db.execute(
+        delete(JournalProfileField).where(
+            JournalProfileField.journal_id == journal.id,
+            JournalProfileField.verification_status != MANUAL_STATUS,
+        )
+    )
+    db.flush()
+    # Qo'lda kiritilgani turgan bo'lsa, xuddi shu yozuvni qayta qo'shmaymiz —
+    # (journal_id, kind, value) yagona bo'lishi kerak.
+    kept_contacts = {
+        (contact.kind, contact.value)
+        for contact in db.scalars(
+            select(JournalContact).where(JournalContact.journal_id == journal.id)
+        )
+    }
 
     contacts: list[JournalContact] = []
     if address:
-        contacts.append(JournalContact(journal=journal, kind="address", label="Manzil", value=compact(address, 1000) or address, source_url=address_page.url if address_page else home.url, fetched_at=now))
-    seen_contacts: set[tuple[str, str]] = set()
+        address_value = compact(address, 1000) or address
+        if ("address", address_value) not in kept_contacts:
+            contacts.append(JournalContact(journal=journal, kind="address", label="Manzil", value=address_value, source_url=address_page.url if address_page else home.url, fetched_at=now))
+    seen_contacts: set[tuple[str, str]] = set(kept_contacts)
     for page in contact_candidates:
         for email in page.emails:
             key = ("email", email.lower())
             if key not in seen_contacts:
                 contacts.append(JournalContact(journal=journal, kind="email", label="Email", value=email.lower(), source_url=page.url, fetched_at=now))
                 seen_contacts.add(key)
-        for phone in dict.fromkeys(clean_text(item) for item in PHONE_RE.findall(page.main_text)):
+        for phone in dict.fromkeys(
+            balance_parens(clean_text(item)) for item in PHONE_RE.findall(page.main_text)
+        ):
             if not is_valid_phone(phone):
                 continue
             key = ("phone", phone)

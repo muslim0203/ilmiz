@@ -80,6 +80,11 @@ Importlar bu belgini hurmat qiladi:
 
 - OAK reestri va tadqiq.uz importlari faqat **bo'sh** maydonlarni to'ldiradi,
   shuning uchun qo'lda kiritilgan qiymat qayta yozilmaydi.
+- `collect_profile` (profil qayta yig'ish) aloqa yozuvlari va provenance
+  qatorlarini **butunlay** o'chirib qayta yozardi — ya'ni qo'lda kiritilgan
+  tuzatish ham, "tegmang" belgisi ham yo'qolardi. Endi manbasi
+  `admin:manual` bo'lgan aloqa yozuvlari va `manual` belgili provenance
+  qatorlari saqlanadi.
 - `fields` (ilmiy sohalar) istisno edi — OAK importi uni har safar qo'shib
   borardi, ya'ni olib tashlangan soha qaytib kelaverardi. Endi qo'lda
   tahrirlangan bo'lsa, importi unga tegmaydi.
@@ -102,9 +107,19 @@ yillar ro'yxatini rad etadi); manzil uchun 400 belgi cheklovi — 23 ta
 
 Telefon raqamlaridagi juftlashmagan qavslar avtomatik tuzatiladi. Scraper'ning
 `\+?\d[\d ()\-]{7,}\d` naqshi raqamdan boshlangani uchun `+998(71) 262-31-69`
-dan `+99871) 262-31-69` qolgan — **bazada hali 124 ta shunday yozuv bor**.
-Ochuvchi qavs qayerda turganini taxmin qilmaymiz (u `+998` dan keyin edi),
-shuning uchun ortiqcha qavs olib tashlanadi — raqam buzilmaydi.
+dan `+99871) 262-31-69` qolgan. Ochuvchi qavs qayerda turganini taxmin
+qilmaymiz (u `+998` dan keyin edi), shuning uchun ortiqcha qavs olib
+tashlanadi — raqam buzilmaydi.
+
+**2026-08-29 da bazadagi hammasi tuzatildi**: 121 ta raqam normallashtirildi,
+1 tasi o'chirildi (`2026-2027) 29` — yillar oralig'i, telefon emas), 2 tasi
+normallashgach mavjud yozuv bilan bir xil bo'lib qolgani uchun olib
+tashlandi. `source_url` tegilmadi: raqamlar o'sha sahifadan kelgan, faqat
+qavs tuzatilgan — bu odamning qarori emas, shuning uchun `admin:manual`
+deb belgilash provenance'ni buzardi.
+
+`balance_parens` endi `profile_collector` da, ya'ni yangi yig'ilgan raqamlar
+darhol toza bo'ladi va muammo qaytmaydi.
 
 ---
 
