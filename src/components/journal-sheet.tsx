@@ -113,8 +113,11 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl">
-        <div className="space-y-3 border-b bg-muted/40 p-6">
+      {/* Panel uch qavat: sarlavha, siljiydigan tanasi va pastda qotirilgan
+          tugmalar. Ilgari butun panel siljirdi va maqola yuborish tugmasiga
+          yetish uchun ro'yxatning oxirigacha tushish kerak edi. */}
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-xl">
+        <div className="shrink-0 space-y-3 border-b bg-muted/40 p-6">
           <span className="flex size-12 items-center justify-center rounded-lg border bg-background text-base font-semibold tracking-tight">
             {monogram(detail.shortName)}
           </span>
@@ -128,7 +131,7 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
           <p className="text-sm text-muted-foreground">{detail.publisher}</p>
         </div>
 
-        <div className="space-y-6 p-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-6">
           {detailState === "loading" && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -408,19 +411,27 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
             </p>
           )}
 
-          <div className="space-y-2">
-            <Button className="w-full" size="lg" asChild>
+        </div>
+
+        {/* Qotirilgan pastki qavat — qaysi joyga siljitilgan bo'lsa ham
+            ko'rinib turadi. Shuning uchun ixcham: yordamchi matn tugma
+            yorlig'ini takrorlardi, olib tashlandi. */}
+        <div className="shrink-0 border-t bg-background p-4">
+          <div className="flex gap-2">
+            <Button className="min-w-0 flex-1" size="lg" asChild>
               <a href={SUBMIT_TELEGRAM_URL} target="_blank" rel="noreferrer">
-                <Send /> Telegram orqali maqola yuborish
+                <Send />
+                {/* Tor ekranda to'liq yorliq kesilib "…yu..." bo'lib qolardi. */}
+                <span className="hidden truncate sm:inline">
+                  Telegram orqali maqola yuborish
+                </span>
+                <span className="truncate sm:hidden">Maqola yuborish</span>
               </a>
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Maqolangizni yuborish uchun bosing — tahririyat bilan Telegramda bog‘lanasiz.
-            </p>
             {detail.website && detail.website !== "#" && (
-              <Button variant="outline" className="w-full" size="lg" asChild>
+              <Button variant="outline" size="lg" className="shrink-0" asChild>
                 <a href={detail.website} target="_blank" rel="noreferrer">
-                  Rasmiy saytga o‘tish <ExternalLink />
+                  Sayt <ExternalLink />
                 </a>
               </Button>
             )}
