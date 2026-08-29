@@ -32,6 +32,7 @@ from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
 from .services import auth as auth_service
 from .services import authorship
+from .services import journal_edit
 from .services.search_text import query_words
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
@@ -843,6 +844,90 @@ def run_harvest(input: HarvestInput, db: Session = Depends(get_db)) -> dict[str,
         "created": run.records_created,
         "updated": run.records_updated,
         "deleted": run.records_deleted,
+    }
+
+
+class JournalEditInput(BaseModel):
+    """Faqat yuborilgan maydonlar o‘zgaradi (`exclude_unset`)."""
+
+    model_config = {"extra": "forbid"}
+
+    name: str | None = None
+    short_name: str | None = None
+    publisher: str | None = None
+    city: str | None = None
+    fields: list[str] | None = None
+    issn: str | None = None
+    eissn: str | None = None
+    languages: list[str] | None = None
+    oak_status: str | None = None
+    access: str | None = None
+    founded: int | None = None
+    website: str | None = None
+    description: str | None = None
+
+
+@admin.get("/journals")
+def admin_journals(
+    q: str | None = None, limit: int = 30, db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Tahrirlash uchun jurnal qidirish."""
+    statement = select(Journal).order_by(Journal.name).limit(min(limit, 100))
+    if q and q.strip():
+        conditions = text_search_filter(q.strip(), [Journal.name, Journal.publisher, Journal.issn])
+        for condition in conditions:
+            statement = statement.where(condition)
+    journals = list(db.scalars(statement))
+    manual = {
+        journal.id: sorted(journal_edit.manually_edited(db, journal.id)) for journal in journals
+    }
+    return {
+        "journals": [
+            {
+                "slug": journal.slug,
+                "name": journal.name,
+                "publisher": journal.publisher,
+                "issn": journal.issn,
+                "city": journal.city,
+                "manualFields": manual[journal.id],
+            }
+            for journal in journals
+        ]
+    }
+
+
+@admin.get("/journals/{slug}")
+def admin_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    journal = db.scalar(select(Journal).where(Journal.slug == slug))
+    if journal is None:
+        raise HTTPException(status_code=404, detail="Jurnal topilmadi")
+    return journal_edit.editable_payload(db, journal)
+
+
+@admin.patch("/journals/{slug}")
+def admin_edit_journal(
+    slug: str, payload: JournalEditInput, db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Jurnal maydonlarini qo‘lda tuzatadi.
+
+    Yuqori manbalar (OAK reestri, tadqiq.uz) ham xato qiladi — shuning uchun
+    tekshirgan odamning tuzatishi ustun turadi va `manual` belgisi bilan
+    saqlanadi.
+    """
+    journal = db.scalar(select(Journal).where(Journal.slug == slug))
+    if journal is None:
+        raise HTTPException(status_code=404, detail="Jurnal topilmadi")
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="O‘zgartirish uchun maydon yuborilmadi")
+    try:
+        applied, warnings = journal_edit.apply_edits(db, journal, changes)
+    except journal_edit.ValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {
+        "applied": sorted(applied),
+        "warnings": warnings,
+        **journal_edit.editable_payload(db, journal),
     }
 
 

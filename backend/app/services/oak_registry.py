@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Journal, OakImportRun, OakRegistryEntry, OakRegistrySnapshotEntry, OakRegistrySnapshotMeta
+from .journal_edit import manually_edited
 from .ingest import normalize_title
 
 REGISTRY_URL = "https://journal-statistics-oak.vercel.app/"
@@ -221,7 +222,11 @@ def import_registry(db: Session, *, url: str = REGISTRY_URL, document: str | Non
             else:
                 run.journals_updated += 1
             areas = {AREA_NAMES.get(item[0].get("area") or "", item[0].get("area")) for item in items}
-            journal.fields = sorted({*journal.fields, *(area for area in areas if area)})
+            # Sohalar odatda qo'shib boriladi. Lekin admin ularni qo'lda
+            # tuzatgan bo'lsa, tegmaymiz: aks holda olib tashlangan soha har
+            # importda qaytib kelaveradi.
+            if journal.id is None or "fields" not in manually_edited(db, journal.id):
+                journal.fields = sorted({*journal.fields, *(area for area in areas if area)})
             journal.oak_status = "removed" if all(_is_removed(item[0]) for item in items) else "active"
             if not journal.website:
                 journal.website = next((item[0].get("link") for item in items if item[0].get("link")), None)

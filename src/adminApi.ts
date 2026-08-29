@@ -127,3 +127,60 @@ export function queueProfileJobs(limit?: number, refresh = false) {
     body: JSON.stringify({ limit: limit ?? null, refresh }),
   });
 }
+
+export type JournalSummary = {
+  slug: string;
+  name: string;
+  publisher: string;
+  issn: string | null;
+  city: string;
+  manualFields: string[];
+};
+
+export type JournalEditValues = {
+  name: string;
+  short_name: string;
+  publisher: string;
+  city: string;
+  fields: string[];
+  issn: string | null;
+  eissn: string | null;
+  languages: string[];
+  oak_status: string;
+  access: string;
+  founded: number | null;
+  website: string | null;
+  description: string | null;
+};
+
+export type JournalEditRecord = {
+  slug: string;
+  values: JournalEditValues;
+  /** Qo'lda tahrirlangan maydonlar — importlar bularga tegmaydi. */
+  manualFields: string[];
+  updatedAt: string | null;
+  choices: { oakStatus: string[]; access: string[] };
+};
+
+export type JournalEditResult = JournalEditRecord & {
+  applied: string[];
+  /** Bloklamaydigan ogohlantirishlar, masalan ISSN takrorlanishi. */
+  warnings: string[];
+};
+
+export function searchJournals(q: string) {
+  return request<{ journals: JournalSummary[] }>(
+    `/api/admin/journals?q=${encodeURIComponent(q)}&limit=30`,
+  );
+}
+
+export function loadJournalForEdit(slug: string) {
+  return request<JournalEditRecord>(`/api/admin/journals/${encodeURIComponent(slug)}`);
+}
+
+export function saveJournal(slug: string, changes: Partial<JournalEditValues>) {
+  return request<JournalEditResult>(`/api/admin/journals/${encodeURIComponent(slug)}`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}

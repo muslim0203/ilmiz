@@ -9,6 +9,7 @@ import {
   ExternalLink,
   FileSearch,
   ListRestart,
+  PencilLine,
   RefreshCw,
   ScanSearch,
   ServerCog,
@@ -31,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ModeToggle } from "@/components/mode-toggle";
+import JournalEditor from "@/JournalEditor";
 import {
   AdminAuthError,
   getAdminToken,
@@ -389,6 +391,21 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
             </Card>
           ))}
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PencilLine className="size-4" /> Jurnal ma’lumotlarini tahrirlash
+            </CardTitle>
+            <CardDescription>
+              OAK reestri va tadqiq.uz ham xato qiladi. Tekshirilgan tuzatishni shu yerdan
+              kiritasiz — importlar unga tegmaydi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <JournalEditor />
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>

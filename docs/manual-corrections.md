@@ -70,6 +70,28 @@ identifikatorga ega.
 
 ---
 
+## Admin panel orqali tahrirlash
+
+Jurnal maydonlarini admin panelning «Jurnal ma'lumotlarini tahrirlash»
+blokidan tuzatish mumkin. Har bir o'zgarish `journal_profile_fields` da
+`manual:<maydon>` nomi va `verification_status="manual"` bilan qayd etiladi.
+
+Importlar bu belgini hurmat qiladi:
+
+- OAK reestri va tadqiq.uz importlari faqat **bo'sh** maydonlarni to'ldiradi,
+  shuning uchun qo'lda kiritilgan qiymat qayta yozilmaydi.
+- `fields` (ilmiy sohalar) istisno edi — OAK importi uni har safar qo'shib
+  borardi, ya'ni olib tashlangan soha qaytib kelaverardi. Endi qo'lda
+  tahrirlangan bo'lsa, importi unga tegmaydi.
+- `oak_status` doim OAK reestridan olinadi — jurnalning ro'yxatdaligini
+  belgilash OAK ning vakolati.
+
+ISSN takrorlansa saqlash bloklanmaydi, lekin ogohlantirish chiqadi: bazada
+allaqachon 16 ta takror bor va ularni tuzatish jarayonida vaqtinchalik
+ikkilanish bo'lishi tabiiy.
+
+---
+
 ## Ma'lum muammolar
 
 - `source_records` da ~8300 yetim yozuv bor (maqolasi o'chirilgan, yozuvi
