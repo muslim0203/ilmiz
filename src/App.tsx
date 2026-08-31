@@ -810,7 +810,13 @@ function App() {
                 </p>
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock3 className="size-3.5" />
-                  {view === "journals" ? "Eng faol jurnallar birinchi" : "Eng yangi maqolalar birinchi"}
+                  {/* Qidiruv paytida maqolalar sanaga emas, mos kelishiga
+                      qarab tartiblanadi (FTS5 BM25). */}
+                  {view === "journals"
+                    ? "Eng faol jurnallar birinchi"
+                    : query.trim()
+                      ? "Eng mos maqolalar birinchi"
+                      : "Eng yangi maqolalar birinchi"}
                 </span>
               </div>
 

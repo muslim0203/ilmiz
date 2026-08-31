@@ -69,3 +69,43 @@ Jonli bazada migratsiya ishlatishdan oldin nusxa oling:
 ```bash
 .venv/Scripts/python.exe -c "import sqlite3; sqlite3.connect('ilmiz.db').execute('VACUUM INTO ?', ('ilmiz.backup.db',))"
 ```
+
+## Qidiruv indeksi (FTS5)
+
+`b83feb85c26a` migratsiyasi `articles_fts` virtual jadvalini va uni
+sinxron ushlab turuvchi uchta triggerni yaratadi.
+
+Tokenizator ataylab **`trigram`**, `unicode61` emas. `unicode61` so'z
+boshidan qidiradi va qo'shma so'zlarni topmaydi: "pedagogika" so'rovida
+"artpedagogika", "xalqpedagogikasi", "oligofrenopedagogika" tushib qolardi
+— 1149 natijadan 61 tasi. Trigram qism-so'z bo'yicha topadi va eski
+`LIKE '%so'z%'` bilan **aynan bir xil** natija beradi.
+
+O'lchov (104 519 maqola, hisob + birinchi 50 qator):
+
+| So'rov | Eski `LIKE` | FTS5 |
+| --- | --- | --- |
+| pedagogika | 0.284s | 0.018s |
+| morfologiya | 0.300s | 0.011s |
+| iqtisodiy tahlil | 0.339s | 0.040s |
+| kamoliddin sharofiddinov | 0.486s | 0.010s |
+
+Narxi: indeks ~0.24 GB joy egallaydi va migratsiya ~12 soniya davom etadi.
+
+**Triggerlar ommaviy yangilashni sekinlashtiradi**: 5000 qatorni yangilash
+0.01s o'rniga 2.7s. Oddiy yig'ishda bu sezilmaydi (bir necha yuz qator),
+lekin `rebuild-search-index` kabi butun jadvalni aylanadigan buyruq
+sezilarli uzayadi. Kerak bo'lsa triggerlarni vaqtincha o'chirib, keyin
+`manage.py fts --rebuild` bilan indeksni qayta qurish mumkin.
+
+Tekshirish:
+
+```bash
+.venv/Scripts/python.exe backend/manage.py fts
+```
+
+`integrity: true` — indeks asosiy jadvalga mos. `--rebuild` qo'shilsa
+indeks noldan quriladi.
+
+PostgreSQL'da FTS5 yo'q. `services/search_index.py` buni tekshiradi va
+qidiruv eski `LIKE` yo'lidan ketaveradi.

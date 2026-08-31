@@ -72,6 +72,10 @@ def main() -> int:
     # Sxemani qo'lda yangilash. `init_db()` buni ishga tushishda o'zi
     # bajaradi; bu buyruq deploydan oldin alohida tekshirish uchun.
     subparsers.add_parser("migrate")
+    # Qidiruv indeksini tekshirish/qayta qurish. Triggerlar sinxronlikni
+    # o'zi ushlab turadi; bu buyruq ommaviy amaldan keyingi tekshiruv uchun.
+    fts = subparsers.add_parser("fts")
+    fts.add_argument("--rebuild", action="store_true")
     import_oak = subparsers.add_parser("import-oak")
     import_oak.add_argument("--url", default="https://journal-statistics-oak.vercel.app/")
     queue_audits = subparsers.add_parser("queue-audits")
@@ -150,6 +154,21 @@ def main() -> int:
         seed_database(db)
         if args.command == "init":
             print(json.dumps({"status": "ok", "message": "Database initialized"}, ensure_ascii=False))
+            return 0
+        if args.command == "fts":
+            from backend.app.services import search_index
+
+            if not search_index.available(db):
+                print(json.dumps(
+                    {"status": "yo‘q", "message": "FTS indeksi bu bazada mavjud emas"},
+                    ensure_ascii=False))
+                return 1
+            rows = search_index.rebuild(db) if args.rebuild else None
+            print(json.dumps({
+                "status": "ok",
+                "integrity": search_index.check_integrity(db),
+                **({"rows": rows} if rows is not None else {}),
+            }, ensure_ascii=False))
             return 0
         if args.command == "migrate":
             # `init_db()` yuqorida allaqachon `alembic upgrade head` ni

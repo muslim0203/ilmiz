@@ -33,6 +33,7 @@ from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stat
 from .services import auth as auth_service
 from .services import authorship
 from .services import journal_edit
+from .services import search_index
 from .services.search_text import query_words
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
@@ -642,10 +643,16 @@ def list_articles(
 ) -> list[dict[str, object]]:
     statement = select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False)).order_by(Article.publication_year.desc(), Article.id.desc())
     if q:
-        # `search_text` allaqachon kichik harf va lotinlashtirilgan, shuning uchun
-        # `ilike` (ya'ni har qator uchun `lower()`) kerak emas.
-        for word in query_words(q):
-            statement = statement.where(Article.search_text.like(f"%{word}%"))
+        # FTS5 indeksi bo'lsa — mos kelish bo'yicha tartiblangan tez qidiruv.
+        # Bo'lmasa (PostgreSQL yoki migratsiyasiz baza) eski yo'l ishlaydi:
+        # `search_text` allaqachon kichik harf va lotinlashtirilgan, shuning
+        # uchun `ilike` (ya'ni har qator uchun `lower()`) kerak emas.
+        expression = search_index.match_expression(q) if search_index.available(db) else None
+        if expression:
+            statement = search_index.apply(statement, expression)
+        else:
+            for word in query_words(q):
+                statement = statement.where(Article.search_text.like(f"%{word}%"))
     if journal_slug:
         statement = statement.join(Article.journal).where(Journal.slug == journal_slug)
     if year:
