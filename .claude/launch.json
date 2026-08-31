@@ -10,6 +10,23 @@
       ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "ilmiz-backend",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000,
+      "env": {
+        "ILMIZ_ALLOW_INDEXING": "1"
+      }
     }
   ]
 }
