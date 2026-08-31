@@ -18,6 +18,8 @@ import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { loadJournal, loadJournalArticles } from "@/api";
+import { AppLink } from "@/components/app-link";
+import { articlePath, journalYearPath } from "@/lib/slug";
 import { monogram, number } from "@/lib/format";
 import type { Article, Journal } from "@/types";
 
@@ -375,6 +377,15 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
               </div>
               <span className="text-xs text-muted-foreground">{journalArticles.length} namuna</span>
             </div>
+            {!!detail.archiveYears?.length && (
+              <nav aria-label="Yillar bo‘yicha arxiv" className="flex flex-wrap gap-2">
+                {detail.archiveYears.map(year => (
+                  <AppLink key={year} to={journalYearPath(detail.id, year)} className="rounded-md border px-3 py-1 text-sm hover:bg-accent">
+                    {year}-yil
+                  </AppLink>
+                ))}
+              </nav>
+            )}
             {journalArticles.length ? (
               <div className="grid gap-2">
                 {journalArticles.map((article) => (
@@ -384,7 +395,7 @@ export function JournalSheet({ journal, onClose }: { journal: Journal; onClose: 
                   >
                     <FileText className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0">
-                      <div className="text-sm font-medium leading-snug">{article.title}</div>
+                      <AppLink to={articlePath(article.id, article.title)} className="text-sm font-medium leading-snug hover:underline">{article.title}</AppLink>
                       <div className="text-xs text-muted-foreground">
                         {article.year} · {article.issue}-son
                       </div>

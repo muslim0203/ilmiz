@@ -21,6 +21,7 @@ export type Journal = {
   description: string;
   profile?: JournalProfile | null;
   oakRecords?: OakRecord[];
+  archiveYears?: number[];
 };
 
 export type JournalProfile = {
@@ -61,6 +62,7 @@ export type Article = {
   authors: string[];
   journalId: string;
   journalName?: string;
+  journalSlug?: string;
   publicationDate?: string | null;
   year: number;
   volume: string;

@@ -20,10 +20,15 @@ IlmIz O‘zbekiston OAK ro‘yxatidagi jurnallarni kataloglashtirish va jurnal r
 - OAK rasmiy elektron reestri importer'i va source hash tarixi
 - OAI endpoint discovery navbati va worker CLI
 - Operatsion admin dashboard
+- Server tomonda render qilinadigan SEO qatlami: har bir jurnal, maqola, soha va shahar uchun alohida manzil, meta, JSON-LD va sitemap
 
 Seed yozuvlar `DEMO`, harvest qilingan yozuvlar esa `OAI-PMH` belgisi bilan ko‘rsatiladi. Agro Inform OAI endpointidan birinchi real pilot yozuvlar import qilingan.
 
 ## Ishga tushirish
+
+GitHub tekshiruvlari va OVH deploy holati: [GitHub ulanishi](docs/GITHUB-DEPLOY.md).
+
+### Lokal ishga tushirish
 
 Backend:
 
@@ -104,6 +109,82 @@ Production build:
 ```bash
 npm run build
 npm run preview
+```
+
+## SEO va indekslash
+
+Sayt SPA bo‘lgani uchun qidiruv robotlariga bo‘sh `<div id="root">` ketardi:
+Yandex JavaScript’ni deyarli render qilmaydi, Googlebot esa 100 mingdan ortiq
+maqolani render navbatida hech qachon ko‘rib ulgurmaydi. Endi **har bir URL
+uchun HTML serverda to‘ldiriladi**: `<head>` meta’lari, JSON-LD va `#root`
+ichidagi haqiqiy matn. React yuklangach o‘sha joyni egallaydi — mazmun bir xil.
+
+Prodda FastAPI ham API’ni, ham saytni beradi (`dist/` static + SEO qobiq):
+
+```bash
+npm run build
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+
+### Manzil tuzilmasi
+
+| URL | Nima |
+| --- | --- |
+| `/` | Bosh sahifa |
+| `/jurnallar`, `?sahifa=N` | OAK jurnallari ro‘yxati |
+| `/jurnal/{slug}` | Jurnal profili |
+| `/jurnal/{slug}/{yil}` | Jurnalning yillik arxivi |
+| `/maqolalar`, `?sahifa=N` | Maqolalar bazasi |
+| `/maqola/{id}-{sarlavha}` | Maqola sahifasi (eski slug 301 bilan kanonikka) |
+| `/sohalar`, `/soha/{slug}` | Ilmiy soha bo‘yicha qo‘nish sahifalari |
+| `/shaharlar`, `/shahar/{slug}` | Shahar bo‘yicha qo‘nish sahifalari |
+| `/loyiha` | Loyiha haqida |
+| `/qidiruv?q=` | Sayt qidiruvi (`noindex`, `SearchAction` shu yerga ishora qiladi) |
+| `/robots.txt`, `/sitemap.xml` | Robotlar uchun |
+
+Sitemap indeks: `sitemap-pages.xml`, `sitemap-journals.xml` (jurnallar +
+yillik arxivlar) va har biri 25 000 URL’dan iborat `sitemap-articles-N.xml`.
+
+Maqola sahifalarida Google Scholar o‘qiydigan `citation_*` va agregatorlar
+uchun `DC.*` meta’lari, JSON-LD’da esa `ScholarlyArticle` →
+`PublicationIssue` → `PublicationVolume` → `Periodical` zanjiri beriladi.
+
+### Sozlamalar
+
+| O‘zgaruvchi | Vazifasi |
+| --- | --- |
+| `ILMIZ_SITE_URL` | **Majburiy.** Kanonik domen, masalan `https://ilmiz.uz`. Sozlanmasa sayt butunlay `noindex` bo‘lib qoladi. |
+| `ILMIZ_ALLOW_INDEXING=1` | Boshqa domenda (staging) indekslashni majburan yoqish |
+| `ILMIZ_NOINDEX=1` | Indekslashni majburan o‘chirish |
+| `GOOGLE_SITE_VERIFICATION` | Search Console meta tasdiqlash kodi |
+| `YANDEX_VERIFICATION` | Yandex Webmaster meta tasdiqlash kodi |
+| `BING_SITE_VERIFICATION` | Bing Webmaster kodi |
+| `ILMIZ_INDEXNOW_KEY` | IndexNow kaliti; `/<kalit>.txt` avtomatik beriladi |
+| `ILMIZ_DIST_DIR` | `dist/` boshqa joyda bo‘lsa |
+
+Tasdiqlash **fayli** (`googlexxxx.html` kabi) `public/` ga qo‘yiladi — Vite
+uni `dist/` ga ko‘chiradi va FastAPI o‘sha yerdan beradi.
+
+Staging nusxa `ILMIZ_SITE_URL`siz ishga tushirilsa, `robots.txt` da
+`Disallow: /` qaytadi va hamma sahifa `noindex` bo‘ladi. Bu ataylab:
+indekslangan staging asosiy domen bilan to‘liq dublikat bo‘lib, ikkalasining
+ham o‘rnini pasaytiradi.
+
+### Ishga tushirishdan keyin
+
+1. Google Search Console va Yandex Webmaster’da domenni tasdiqlang
+   (yuqoridagi env yoki `public/` dagi fayl orqali).
+2. Ikkalasiga ham `https://<domen>/sitemap.xml` ni qo‘shing.
+3. Yandex Webmaster’da IndexNow kalitini yarating, uni
+   `ILMIZ_INDEXNOW_KEY` ga yozing va tekshiring: `https://<domen>/<kalit>.txt`
+   o‘sha kalitni qaytarishi kerak.
+
+Harvest’dan keyin o‘zgargan manzillarni Yandex va Bing’ga bildirish
+(Google IndexNow’ni qo‘llamaydi — u sitemap’dagi `lastmod` bo‘yicha keladi):
+
+```bash
+python backend/manage.py indexnow --days 7            # quruq yurish
+python backend/manage.py indexnow --days 7 --apply    # haqiqatan yuboradi
 ```
 
 ## Harvester
@@ -265,7 +346,9 @@ python -m unittest backend.tests.test_api backend.tests.test_ingest backend.test
 ```text
 src/                  React/Vite ilovasi
 backend/app/          FastAPI, ORM va ingest service
+backend/app/seo_routes.py  robots.txt, sitemap va SEO HTML qobig‘i
 backend/manage.py     Audit/harvest boshqaruv CLI
+public/               Statik fayllar (favicon, og-image, tasdiqlash fayllari)
 database/schema.sql   To‘liq PostgreSQL production sxemasi
 harvester/            OAI-PMH discovery va harvest client
 ```
@@ -275,4 +358,4 @@ harvester/            OAI-PMH discovery va harvest client
 1. Auditdan o‘tgan manbalar uchun harvest scheduler.
 2. DOI/ORCID deduplikatsiyasi va metama’lumot sifati.
 3. Admin autentifikatsiyasi va rol nazorati.
-4. Production PostgreSQL, qidiruv va sitemap/schema.org integratsiyasi.
+4. Production PostgreSQL va to‘liq matnli qidiruv.

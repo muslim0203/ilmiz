@@ -153,6 +153,14 @@ async def admin_guard(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def indexing_guard(request: Request, call_next):
+    response = await call_next(request)
+    if not seo.is_production_host() or request.url.path.startswith("/api/"):
+        response.headers["X-Robots-Tag"] = "noindex, follow"
+    return response
+
+
 # Router darajasida himoya: yangi admin endpoint qo‘shilganda ham avtomatik yopiq bo‘ladi.
 admin = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -590,6 +598,12 @@ def get_journal(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
         raise HTTPException(status_code=404, detail="Jurnal topilmadi")
     counts = journal_counts(db, [journal.id])
     payload = journal_payload(journal, include_profile=True, counts=counts.get(journal.id, (0, 0, 0)))
+    payload["archiveYears"] = list(db.scalars(
+        select(Article.publication_year).where(
+            Article.journal_id == journal.id, Article.is_deleted.is_(False),
+            Article.publication_year.between(1000, 2999),
+        ).distinct().order_by(Article.publication_year.desc())
+    ))
     latest_import = db.scalar(select(OakImportRun).where(OakImportRun.status == "succeeded").order_by(OakImportRun.started_at.desc()).limit(1))
     registry_statement = select(OakRegistryEntry).where(OakRegistryEntry.journal_id == journal.id).order_by(OakRegistryEntry.id)
     if latest_import is not None:

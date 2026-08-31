@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -23,6 +23,7 @@ import {
 import {
   PAGE_SIZE,
   loadCatalog,
+  loadJournal,
   loadJournalIndex,
   searchArticles,
   searchJournals,
@@ -30,12 +31,17 @@ import {
   type PlatformStats,
 } from "@/api";
 import { loadCurrentUser, type AuthUser } from "@/authApi";
-import { articles as demoArticles, journals as demoJournals } from "@/data";
 import type { Article, Journal } from "@/types";
 
+import AboutPage from "@/AboutPage";
 import AccountPanel from "@/AccountPanel";
 import AdminDashboard from "@/AdminDashboard";
+import ArticlePage from "@/ArticlePage";
+import ArchivePage from "@/ArchivePage";
+import DirectoryPage from "@/DirectoryPage";
 import FieldPicker from "@/FieldPicker";
+import { navigate, useRoute } from "@/router";
+import { AppLink } from "@/components/app-link";
 import { ArticleCard } from "@/components/article-card";
 import { Brand } from "@/components/brand";
 import { JournalCard } from "@/components/journal-card";
@@ -58,6 +64,8 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { number, shortDate } from "@/lib/format";
+import { clip, setHead, syncHead } from "@/lib/head";
+import { cityPath, fieldPath, journalPath, slugify } from "@/lib/slug";
 import { cn } from "@/lib/utils";
 
 type View = "journals" | "articles";
@@ -78,11 +86,11 @@ function Eyebrow({ children, className }: { children: React.ReactNode; className
 }
 
 function App() {
-  const [catalogJournals, setCatalogJournals] = useState<Journal[]>(demoJournals);
-  const [catalogArticles, setCatalogArticles] = useState<Article[]>(demoArticles);
+  const [catalogJournals, setCatalogJournals] = useState<Journal[]>([]);
+  const [catalogArticles, setCatalogArticles] = useState<Article[]>([]);
   const [platformStats, setPlatformStats] = useState<PlatformStats>({
-    journals: demoJournals.length,
-    articles: demoArticles.length,
+    journals: 0,
+    articles: 0,
     healthySources: 0,
   });
   const [apiState, setApiState] = useState<"loading" | "live" | "fallback">("loading");
@@ -91,18 +99,26 @@ function App() {
   const [account, setAccount] = useState<AuthUser | null>(null);
   // Maqola kartasi va drawer jurnal obyektini talab qiladi, sahifada esa
   // atigi PAGE_SIZE ta jurnal bo'ladi — shuning uchun to'liq indeks alohida.
-  const [journalIndex, setJournalIndex] = useState<Journal[]>(demoJournals);
-  const [journalTotal, setJournalTotal] = useState(demoJournals.length);
-  const [articleTotal, setArticleTotal] = useState(demoArticles.length);
+  const [journalIndex, setJournalIndex] = useState<Journal[]>([]);
+  const [journalTotal, setJournalTotal] = useState(0);
+  const [articleTotal, setArticleTotal] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [view, setView] = useState<View>("journals");
+  // Ko'rinish endi manzildan kelib chiqadi: `/jurnallar` va `/maqolalar` —
+  // ikkita alohida indekslanadigan sahifa, holat emas.
+  const route = useRoute();
+  const isArchive = route.kind === 'recent' || ('page' in route && route.page > 1) || (route.kind === 'journal' && route.year !== null);
+  useEffect(() => { void syncHead(); }, [route]);
+  const view: View =
+    route.kind === "articles" || route.kind === "search" ? "articles" : "journals";
+  const setView = useCallback((next: View) => {
+    navigate(next === "articles" ? "/maqolalar" : "/jurnallar");
+  }, []);
   const [query, setQuery] = useState("");
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [facets, setFacets] = useState<Facets>({ fieldGroups: [], fieldCount: 0, cities: [] });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [city, setCity] = useState("Barcha shaharlar");
   const [oaiOnly, setOaiOnly] = useState(false);
-  const [selectedJournal, setSelectedJournal] = useState<Journal | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
 
   useEffect(() => {
@@ -143,6 +159,82 @@ function App() {
 
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
+
+  // Jurnal drawer'i endi `/jurnal/{slug}` manzilida yashaydi — havolasini
+  // ulashish va qidiruv tizimlariga ko'rsatish mumkin.
+  const [fetchedJournal, setFetchedJournal] = useState<Journal | null>(null);
+  const indexedJournal =
+    route.kind === "journal" ? journalIndex.find((item) => item.id === route.slug) ?? null : null;
+  const selectedJournal =
+    route.kind === "journal" && !isArchive
+      ? indexedJournal ?? (fetchedJournal?.id === route.slug ? fetchedJournal : null)
+      : null;
+
+  useEffect(() => {
+    // Manzil to'g'ridan-to'g'ri ochilgan bo'lsa, indeks hali yuklanmagan
+    // bo'lishi mumkin — jurnalni alohida olamiz.
+    if (route.kind !== "journal" || indexedJournal) return;
+    let active = true;
+    void loadJournal(route.slug)
+      .then((value) => {
+        if (active) setFetchedJournal(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [indexedJournal, route]);
+
+  useEffect(() => {
+    if (route.kind !== "journal" || !selectedJournal) return;
+    const issn = selectedJournal.issn && selectedJournal.issn !== "—" ? `, ISSN ${selectedJournal.issn}` : "";
+    setHead({
+      title: `${selectedJournal.name} — OAK jurnali${issn}`,
+      description: clip(
+        selectedJournal.description ||
+          `${selectedJournal.name} — ${selectedJournal.city} shahrida ${selectedJournal.publisher} nashr etadigan OAK ro‘yxatidagi ilmiy jurnal.`,
+      ),
+      path: journalPath(selectedJournal.id),
+    });
+  }, [route, selectedJournal]);
+
+  const closeJournal = useCallback(() => {
+    if (window.history.length > 1) window.history.back();
+    else navigate("/jurnallar");
+  }, []);
+
+  // `/soha/{slug}` va `/shahar/{slug}` — filtr emas, alohida qo'nish sahifasi.
+  const routeField = useMemo(
+    () =>
+      route.kind === "field"
+        ? facets.fieldGroups
+            .flatMap((group) => group.fields)
+            .find((item) => slugify(item.name) === route.slug)?.name ?? null
+        : null,
+    [facets, route],
+  );
+  const routeCity = useMemo(
+    () =>
+      route.kind === "city"
+        ? facets.cities.find((item) => slugify(item.name) === route.slug)?.name ?? null
+        : null,
+    [facets, route],
+  );
+
+  useEffect(() => {
+    setSelectedFields(routeField ? [routeField] : []);
+  }, [routeField]);
+
+  useEffect(() => {
+    setCity(routeCity ?? "Barcha shaharlar");
+  }, [routeCity]);
+
+  // `/qidiruv?q=` — sayt qidiruvi. JSON-LD dagi `SearchAction` aynan shu
+  // manzilga ishora qiladi, ya'ni Google uni chaqira olishi kerak.
+  const routeQuery = route.kind === "search" ? route.query : null;
+  useEffect(() => {
+    if (routeQuery !== null) setQuery(routeQuery);
+  }, [routeQuery]);
   // Ilgari bu joyda o'ylab topilgan "jonli konsol" turardi: soxta vaqtlar,
   // HTTP kodlari va yozuv sonlari. Endi haqiqiy yangilanish sanalari.
   const recentUpdates = useMemo(
@@ -187,7 +279,46 @@ function App() {
     setSelectedFields([]);
     setCity("Barcha shaharlar");
     setOaiOnly(false);
+    // Soha/shahar sahifasida turib filtrni tozalash manzilni yolg'onga
+    // aylantirardi: URL "/soha/tibbiyot", ro'yxatda esa hamma jurnal.
+    if (route.kind === "field" || route.kind === "city") navigate("/jurnallar");
   };
+
+  // Har o'tishda sarlavha va kanonik havolani yangilaymiz. Birinchi
+  // yuklashda ularni server qo'ygan — bu faqat keyingi o'tishlar uchun.
+  useEffect(() => {
+    if (route.kind === "article" || route.kind === "journal") return;
+    const titles: Record<string, [string, string]> = {
+      home: [
+        "IlmIz — O‘zbekiston OAK jurnallari va ilmiy maqolalar indeksi",
+        `OAK ro‘yxatidagi ${number.format(platformStats.journals)} ta ilmiy jurnal va ${number.format(platformStats.articles)} ta maqolaning ochiq indeksi.`,
+      ],
+      journals: [
+        `OAK jurnallari ro‘yxati — ${number.format(journalTotal)} ta ilmiy nashr`,
+        "O‘zbekiston OAK tasdiqlagan ilmiy jurnallar: ISSN, nashriyot, shahar va ilmiy soha bo‘yicha.",
+      ],
+      articles: [
+        `Ilmiy maqolalar bazasi — ${number.format(articleTotal)} ta maqola`,
+        "OAK jurnallaridan yig‘ilgan maqolalar: annotatsiya, kalit so‘zlar, DOI va tayyor iqtibos.",
+      ],
+      field: [
+        routeField ? `${routeField} — OAK jurnallari va ilmiy maqolalar` : "Ilmiy soha",
+        routeField ? `${routeField} sohasi bo‘yicha OAK ro‘yxatidagi ilmiy jurnallar va maqolalar.` : "",
+      ],
+      city: [
+        routeCity ? `${routeCity} — OAK jurnallari va ilmiy nashrlari` : "Shahar",
+        routeCity ? `${routeCity} shahrida nashr etiladigan OAK ro‘yxatidagi ilmiy jurnallar.` : "",
+      ],
+      notFound: ["Sahifa topilmadi", "So‘ralgan manzil indeksda yo‘q."],
+    };
+    const entry = titles[route.kind];
+    if (!entry) return;
+    setHead({
+      title: entry[0],
+      description: clip(entry[1]),
+      noindex: route.kind === "notFound",
+    });
+  }, [articleTotal, journalTotal, platformStats, route, routeCity, routeField]);
 
   const activeCities = useMemo(() => (city === "Barcha shaharlar" ? [] : [city]), [city]);
 
@@ -245,41 +376,80 @@ function App() {
     return <AdminDashboard onClose={() => setAdminOpen(false)} />;
   }
 
+  const hero: { eyebrow: string; title: React.ReactNode; lead: string } = (() => {
+    const catalogue =
+      "OAK tasdiqlagan jurnallar va ularda chop etilgan maqolalarning muntazam yangilanadigan ochiq katalogi.";
+    if (routeField)
+      return {
+        eyebrow: `${routeField} yo‘nalishi`,
+        title: `${routeField} sohasidagi OAK jurnallari`,
+        lead: `${routeField} sohasi bo‘yicha OAK ro‘yxatidagi ilmiy jurnallar va ularning maqolalari.`,
+      };
+    if (routeCity)
+      return {
+        eyebrow: `${routeCity} shahri`,
+        title: `${routeCity} shahridagi OAK jurnallari`,
+        lead: `${routeCity} shahrida nashr etiladigan OAK ro‘yxatidagi ilmiy jurnallar.`,
+      };
+    if (selectedJournal)
+      return {
+        eyebrow: "OAK jurnali",
+        title: selectedJournal.name,
+        lead: selectedJournal.description || catalogue,
+      };
+    if (route.kind === "articles" || route.kind === "search")
+      return {
+        eyebrow: "Maqolalar bazasi",
+        title: "O‘zbekiston ilmiy maqolalarini izlang.",
+        lead: "OAK jurnallaridan yig‘ilgan maqolalar: annotatsiya, kalit so‘zlar, DOI va tayyor iqtibos.",
+      };
+    if (route.kind === "journals")
+      return {
+        eyebrow: "OAK ro‘yxati",
+        title: "O‘zbekiston OAK jurnallari ro‘yxati",
+        lead: catalogue,
+      };
+    return {
+      eyebrow: "O‘zbekiston ilmiy nashrlari yagona indeksi",
+      title: (
+        <>
+          Ilmiy manbani <span className="text-primary">bir joydan</span> toping.
+        </>
+      ),
+      lead: catalogue,
+    };
+  })();
+
+  // Navigatsiya haqiqiy `<a href>` lardan iborat: robot ular orqali indeksni
+  // aylanib chiqadi, ilgari esa `onClick` ortidagi holat o'zgarishi edi.
   const navLinks = (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(view === "journals" && "bg-accent text-accent-foreground")}
-        onClick={() => {
-          setView("journals");
-          setMobileNav(false);
-        }}
-      >
-        Jurnallar
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(view === "articles" && "bg-accent text-accent-foreground")}
-        onClick={() => {
-          setView("articles");
-          setMobileNav(false);
-        }}
-      >
-        Maqolalar
-      </Button>
-      <Button variant="ghost" size="sm" asChild onClick={() => setMobileNav(false)}>
-        <a href="#monitoring">Monitoring</a>
-      </Button>
-      <Button variant="ghost" size="sm" asChild onClick={() => setMobileNav(false)}>
-        <a href="#about">Loyiha haqida</a>
-      </Button>
+      {(
+        [
+          ["/jurnallar", "Jurnallar", route.kind === "journals" || route.kind === "home"],
+          ["/maqolalar", "Maqolalar", route.kind === "articles"],
+          ["/yangi-maqolalar", "Yangi maqolalar", route.kind === "recent"],
+          ["/sohalar", "Sohalar", route.kind === "fields" || route.kind === "field"],
+          ["/shaharlar", "Shaharlar", route.kind === "cities" || route.kind === "city"],
+          ["/loyiha", "Loyiha haqida", route.kind === "about"],
+        ] as const
+      ).map(([href, label, active]) => (
+        <Button
+          key={href}
+          variant="ghost"
+          size="sm"
+          className={cn(active && "bg-accent text-accent-foreground")}
+          asChild
+          onClick={() => setMobileNav(false)}
+        >
+          <AppLink to={href}>{label}</AppLink>
+        </Button>
+      ))}
     </>
   );
 
   const apiLabel =
-    apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Demo rejim";
+    apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Ulanish xatosi";
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
@@ -358,6 +528,31 @@ function App() {
       </Sheet>
 
       <main className="flex-1">
+        {isArchive ? (
+          <ArchivePage path={window.location.pathname + window.location.search} />
+        ) : route.kind === "article" ? (
+          <ArticlePage id={route.id} />
+        ) : route.kind === "about" ? (
+          <AboutPage stats={platformStats} />
+        ) : route.kind === "fields" || route.kind === "cities" ? (
+          <DirectoryPage kind={route.kind} facets={facets} />
+        ) : route.kind === "notFound" ? (
+          <div className={cn(SHELL, "py-24 text-center")}>
+            <h1 className="text-2xl font-semibold tracking-tight">Sahifa topilmadi</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              <code className="font-mono">{route.path}</code> manzili indeksda yo‘q.
+            </p>
+            <div className="mt-6 flex justify-center gap-2">
+              <Button asChild>
+                <AppLink to="/jurnallar">Jurnallar</AppLink>
+              </Button>
+              <Button variant="outline" asChild>
+                <AppLink to="/maqolalar">Maqolalar</AppLink>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
         <section className="relative overflow-hidden border-b">
           <div
             aria-hidden="true"
@@ -375,15 +570,17 @@ function App() {
             <div className="mx-auto max-w-3xl text-center">
               <Badge variant="outline" className="mb-5 gap-1.5 bg-background/60 py-1 font-normal">
                 <Database className="size-3.5" />
-                O‘zbekiston ilmiy nashrlari yagona indeksi
+                {hero.eyebrow}
               </Badge>
+              {/* H1 manzilga qarab o'zgaradi. Ilgari hamma sahifada bir xil
+                  edi, ya'ni Googlebot render qilgach `/soha/tibbiyot` ham,
+                  `/maqolalar` ham "Ilmiy manbani bir joydan toping" sarlavhasi
+                  bilan indekslanardi — serverdagi H1 bilan mos kelmasdi. */}
               <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl md:text-6xl">
-                Ilmiy manbani{" "}
-                <span className="text-primary">bir joydan</span> toping.
+                {hero.title}
               </h1>
               <p className="mx-auto mt-4 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-                OAK tasdiqlagan jurnallar va ularda chop etilgan maqolalarning muntazam
-                yangilanadigan ochiq katalogi.
+                {hero.lead}
               </p>
 
               <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-2 sm:flex-row">
@@ -432,15 +629,9 @@ function App() {
                       variant={fieldSet.has(item) ? "default" : "outline"}
                       size="sm"
                       className="h-7 rounded-full px-3 text-xs font-normal"
-                      onClick={() =>
-                        setSelectedFields((current) =>
-                          current.includes(item)
-                            ? current.filter((name) => name !== item)
-                            : [...current, item],
-                        )
-                      }
+                      asChild
                     >
-                      {item}
+                      <AppLink to={fieldPath(item)}>{item}</AppLink>
                     </Button>
                   ))}
                 </div>
@@ -468,7 +659,7 @@ function App() {
                   </span>
                   <div className="min-w-0">
                     <div className="text-xl font-semibold tabular-nums tracking-tight">
-                      {item.value}
+                      {apiState === 'live' ? item.value : '—'}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">{item.label}</div>
                   </div>
@@ -626,11 +817,7 @@ function App() {
               <div className="flex flex-col gap-3">
                 {view === "journals"
                   ? visibleJournals.map((journal) => (
-                      <JournalCard
-                        key={journal.id}
-                        journal={journal}
-                        onOpen={() => setSelectedJournal(journal)}
-                      />
+                      <JournalCard key={journal.id} journal={journal} />
                     ))
                   : visibleArticles.map((article) => {
                       const journal = journalById.get(article.journalId);
@@ -655,6 +842,17 @@ function App() {
                 </div>
               )}
 
+              {!filtersActive && totalResults > PAGE_SIZE && (
+                <nav aria-label="Katalog sahifalari" className="flex justify-center gap-4 py-3 text-sm">
+                  <span aria-current="page">1-sahifa</span>
+                  <AppLink to={`${route.kind === 'home' ? '/jurnallar' : window.location.pathname}?sahifa=2`}>
+                    Keyingi sahifa →
+                  </AppLink>
+                  <AppLink to={`${route.kind === 'home' ? '/jurnallar' : window.location.pathname}?sahifa=${Math.ceil(totalResults / PAGE_SIZE)}`}>
+                    Oxirgi sahifa
+                  </AppLink>
+                </nav>
+              )}
               {shown > 0 && shown < totalResults && (
                 <Button
                   variant="outline"
@@ -778,26 +976,75 @@ function App() {
             ))}
           </div>
         </section>
+          </>
+        )}
       </main>
 
       <footer className="border-t">
-        <div
-          className={cn(
-            SHELL,
-            "flex flex-col items-center gap-4 py-8 sm:flex-row sm:justify-between",
-          )}
-        >
-          <Brand />
-          <p className="text-center text-sm text-muted-foreground">
-            O‘zbekiston ilmiy nashrlari uchun ochiq indeks prototipi.
-          </p>
+        <div className={cn(SHELL, "grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4")}>
+          <div className="space-y-3">
+            <Brand />
+            <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+              O‘zbekiston OAK jurnallari va ilmiy maqolalarining ochiq indeksi.
+            </p>
+          </div>
+          {/* Futer havolalari indeksni butun sayt bo‘ylab bog‘laydi: robot har
+              qanday sahifadan asosiy bo‘limlarga bir qadamda o‘tadi. */}
+          <nav aria-label="Katalog" className="space-y-2 text-sm">
+            <strong className="block text-xs uppercase tracking-widest text-muted-foreground">
+              Katalog
+            </strong>
+            <AppLink to="/jurnallar" className="block text-muted-foreground hover:text-foreground">
+              OAK jurnallari
+            </AppLink>
+            <AppLink to="/maqolalar" className="block text-muted-foreground hover:text-foreground">
+              Ilmiy maqolalar
+            </AppLink>
+            <AppLink to="/sohalar" className="block text-muted-foreground hover:text-foreground">
+              Ilmiy sohalar
+            </AppLink>
+            <AppLink to="/shaharlar" className="block text-muted-foreground hover:text-foreground">
+              Shaharlar
+            </AppLink>
+          </nav>
+          <nav aria-label="Ommabop sohalar" className="space-y-2 text-sm">
+            <strong className="block text-xs uppercase tracking-widest text-muted-foreground">
+              Ommabop sohalar
+            </strong>
+            {topFields.slice(0, 5).map((item) => (
+              <AppLink
+                key={item}
+                to={fieldPath(item)}
+                className="block text-muted-foreground hover:text-foreground"
+              >
+                {item}
+              </AppLink>
+            ))}
+          </nav>
+          <nav aria-label="Shaharlar" className="space-y-2 text-sm">
+            <strong className="block text-xs uppercase tracking-widest text-muted-foreground">
+              Shaharlar
+            </strong>
+            {facets.cities.slice(0, 5).map((item) => (
+              <AppLink
+                key={item.name}
+                to={cityPath(item.name)}
+                className="block text-muted-foreground hover:text-foreground"
+              >
+                {item.name}
+              </AppLink>
+            ))}
+          </nav>
+        </div>
+        <div className={cn(SHELL, "flex flex-col items-center gap-2 border-t py-5 sm:flex-row sm:justify-between")}>
+          <AppLink to="/loyiha" className="text-sm text-muted-foreground hover:text-foreground">
+            Loyiha haqida
+          </AppLink>
           <span className="text-xs text-muted-foreground">© 2026 IlmIz · MVP 0.1</span>
         </div>
       </footer>
 
-      {selectedJournal && (
-        <JournalSheet journal={selectedJournal} onClose={() => setSelectedJournal(null)} />
-      )}
+      {selectedJournal && <JournalSheet journal={selectedJournal} onClose={closeJournal} />}
       {pickerOpen && (
         <FieldPicker
           groups={facets.fieldGroups}

@@ -97,3 +97,8 @@ export async function searchArticles(
   if (query.trim()) params.set("q", query.trim());
   return requestPage<Article>(`/api/articles?${params.toString()}`);
 }
+
+/** Bitta maqola — `/maqola/{id}` manzili to'g'ridan-to'g'ri ochilganda. */
+export async function loadArticle(id: string): Promise<Article> {
+  return request<Article>(`/api/articles/${encodeURIComponent(id)}`);
+}

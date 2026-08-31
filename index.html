@@ -5,11 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
+    <meta name="format-detection" content="telephone=no" />
+    <!-- Sarlavha, tavsif, kanonik havola va JSON-LD har bir manzil uchun
+         serverda qo'yiladi (backend/app/services/seo.py). Bu yerdagilar —
+         faqat server qobig'i ishlamagan holatdagi zaxira. -->
+    <title>IlmIz — OAK jurnallari va ilmiy maqolalar indeksi</title>
     <meta
       name="description"
-      content="O‘zbekiston OAK jurnallari va ilmiy maqolalarining ochiq indeksi"
+      content="O‘zbekiston OAK ro‘yxatidagi ilmiy jurnallar va maqolalarning ochiq indeksi."
     />
-    <title>IlmIz — OAK jurnallari va maqolalar indeksi</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <!-- DOI havolalari maqola sahifasidan eng ko'p bosiladi. -->
+    <link rel="dns-prefetch" href="https://doi.org" />
     <script>
       // Mavzu React yuklanmasdan oldin qo'llanadi — aks holda sahifa bir zumda oq yonadi.
       (function () {

@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { Check, Copy, Download, ExternalLink, Link2, UsersRound } from "lucide-react";
 
+import { AppLink } from "@/components/app-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { monogram } from "@/lib/format";
+import { articlePath, fieldPath, journalPath } from "@/lib/slug";
 import { cn } from "@/lib/utils";
 import type { Article, Journal } from "@/types";
 
 export function ArticleCard({ article, journal }: { article: Article; journal: Journal }) {
   const [open, setOpen] = useState(false);
   const [citationsOpen, setCitationsOpen] = useState(false);
+  const href = articlePath(article.id, article.title);
   const [copied, setCopied] = useState<string | null>(null);
   const published =
     article.publicationDate || (article.year ? String(article.year) : "Sana ko‘rsatilmagan");
@@ -37,7 +40,12 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
             {monogram(journal.shortName)}
           </span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium leading-tight">{journal.name}</div>
+            <AppLink
+              to={journalPath(journal.id)}
+              className="block truncate text-sm font-medium leading-tight hover:text-primary"
+            >
+              {journal.name}
+            </AppLink>
             <div className="truncate text-xs text-muted-foreground">{meta.join(" · ")}</div>
           </div>
           {article.isDemo && (
@@ -47,12 +55,14 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
           )}
         </div>
 
-        <button
-          onClick={() => setOpen((value) => !value)}
-          className="cursor-pointer text-left text-[15px] font-semibold leading-snug tracking-tight outline-none hover:text-primary focus-visible:rounded-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        {/* Sarlavha — maqolaning doimiy manzili. Ilgari bu shunchaki
+            annotatsiyani ochadigan tugma edi va maqolaga havola yo'q edi. */}
+        <AppLink
+          to={href}
+          className="block cursor-pointer text-left text-[15px] font-semibold leading-snug tracking-tight outline-none hover:text-primary focus-visible:rounded-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           {article.title}
-        </button>
+        </AppLink>
 
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
           <UsersRound className="mt-0.5 size-4 shrink-0" />
@@ -67,12 +77,18 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
         >
           {article.abstract}
         </p>
+        <button
+          onClick={() => setOpen((value) => !value)}
+          className="cursor-pointer text-xs font-medium text-muted-foreground outline-none hover:text-foreground"
+        >
+          {open ? "Yig‘ish" : "Annotatsiyani ochish"}
+        </button>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex flex-wrap gap-1.5">
             {article.fields.map((field) => (
-              <Badge key={field} variant="secondary" className="font-normal">
-                {field}
+              <Badge key={field} variant="secondary" className="font-normal" asChild>
+                <AppLink to={fieldPath(field)}>{field}</AppLink>
               </Badge>
             ))}
             <Badge variant="outline" className="font-normal text-muted-foreground">
@@ -80,16 +96,19 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
             </Badge>
           </div>
           <div className="flex flex-wrap items-center gap-1">
+            <Button variant="ghost" size="sm" asChild>
+              <AppLink to={href}>Batafsil</AppLink>
+            </Button>
             {article.landingUrl && (
               <Button variant="ghost" size="sm" asChild>
-                <a href={article.landingUrl} target="_blank" rel="noreferrer">
+                <a href={article.landingUrl} target="_blank" rel="noreferrer nofollow">
                   <ExternalLink /> Maqola sahifasi
                 </a>
               </Button>
             )}
             {article.doi && (
               <Button variant="ghost" size="sm" asChild>
-                <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noreferrer" title="DOI">
+                <a href={`https://doi.org/${article.doi}`} target="_blank" rel="noreferrer nofollow" title="DOI">
                   <Link2 /> DOI
                 </a>
               </Button>

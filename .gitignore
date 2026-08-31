@@ -16,3 +16,28 @@ harvest-output/
 ilmiz.backup-*.db
 logs/
 tadqiq-cache/
+.deploy-artifacts/
+
+# Databases/backups and credentials must never enter GitHub.
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.pem
+*.key
+*.p12
+*.pfx
+.ssh/
+.secrets/
+backups/
+*.tsbuildinfo
+
+# Existing server-specific operator notes stay local, not in the public repo.
+deploy/README.md
+deploy/ilmiz-staging.service
+deploy/install_staging.sh
+deploy/update_seo_staging.sh
+deploy/staging.env.example
+docs/SEO-AUDIT-2026-08-31.md

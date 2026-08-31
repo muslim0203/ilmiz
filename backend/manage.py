@@ -26,6 +26,7 @@ from backend.app.services.ingest import (
     rebuild_search_index,
     reparse_bibliographic,
 )
+from backend.app.services import indexnow
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
 from backend.app.services.auth import grant_admin
@@ -130,6 +131,12 @@ def main() -> int:
     drop_raw.add_argument("--no-vacuum", action="store_true", help="Ustunni o‘chiradi, lekin faylni siqmaydi")
     reparse = subparsers.add_parser("reparse-bibliographic")
     reparse.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
+    index_now = subparsers.add_parser(
+        "indexnow", help="O‘zgargan URL'larni Yandex/Bing'ga bildirish (IndexNow)"
+    )
+    index_now.add_argument("--days", type=int, default=7, help="So‘nggi necha kunlik o‘zgarishlar")
+    index_now.add_argument("--limit", type=int, default=indexnow.BATCH)
+    index_now.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
     args = parser.parse_args()
 
     log_path = configure_logging()
@@ -218,6 +225,18 @@ def main() -> int:
             db.close()
             result = drop_raw_metadata_column(vacuum=not args.no_vacuum)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "indexnow":
+            urls = indexnow.changed_urls(db, days=args.days, limit=args.limit)
+            if not args.apply:
+                print(json.dumps({
+                    "rejim": "dry-run",
+                    "topildi": len(urls),
+                    "namuna": urls[:5],
+                    "izoh": "Yuborish uchun --apply qo‘shing",
+                }, ensure_ascii=False, indent=2))
+                return 0
+            print(json.dumps(indexnow.submit(urls), ensure_ascii=False, indent=2))
             return 0
         if args.command == "reparse-bibliographic":
             result = reparse_bibliographic(db, dry_run=not args.apply)

@@ -1,18 +1,22 @@
 import { ArrowRight, MapPin, ShieldCheck } from "lucide-react";
 
+import { AppLink } from "@/components/app-link";
 import { HarvestStatus } from "@/components/harvest-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { monogram, number } from "@/lib/format";
+import { journalPath } from "@/lib/slug";
 import type { Journal } from "@/types";
 
-export function JournalCard({ journal, onOpen }: { journal: Journal; onOpen: () => void }) {
+/** `journal.id` — bu jurnalning slug'i, ya'ni uning doimiy manzili. */
+export function JournalCard({ journal }: { journal: Journal }) {
+  const href = journalPath(journal.id);
   return (
     <Card className="group gap-0 py-0 transition-colors hover:border-primary/40 hover:bg-accent/40">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:gap-5 sm:p-5">
-        <button
-          onClick={onOpen}
+        <AppLink
+          to={href}
           aria-label={`${journal.name} jurnalini ochish`}
           className="flex min-w-0 flex-1 cursor-pointer items-start gap-4 text-left outline-none focus-visible:rounded-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
@@ -50,7 +54,7 @@ export function JournalCard({ journal, onOpen }: { journal: Journal; onOpen: () 
               )}
             </span>
           </span>
-        </button>
+        </AppLink>
 
         <div className="flex items-center gap-5 border-t pt-4 sm:w-52 sm:shrink-0 sm:justify-end sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
           <div className="text-right">
@@ -68,11 +72,13 @@ export function JournalCard({ journal, onOpen }: { journal: Journal; onOpen: () 
           <Button
             variant="outline"
             size="icon"
-            onClick={onOpen}
+            asChild
             aria-label="Batafsil"
             className="ml-auto shrink-0 sm:ml-0"
           >
-            <ArrowRight />
+            <AppLink to={href}>
+              <ArrowRight />
+            </AppLink>
           </Button>
         </div>
       </div>
