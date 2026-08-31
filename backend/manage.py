@@ -69,6 +69,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="IlmIz backend boshqaruv CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("init")
+    # Sxemani qo'lda yangilash. `init_db()` buni ishga tushishda o'zi
+    # bajaradi; bu buyruq deploydan oldin alohida tekshirish uchun.
+    subparsers.add_parser("migrate")
     import_oak = subparsers.add_parser("import-oak")
     import_oak.add_argument("--url", default="https://journal-statistics-oak.vercel.app/")
     queue_audits = subparsers.add_parser("queue-audits")
@@ -147,6 +150,17 @@ def main() -> int:
         seed_database(db)
         if args.command == "init":
             print(json.dumps({"status": "ok", "message": "Database initialized"}, ensure_ascii=False))
+            return 0
+        if args.command == "migrate":
+            # `init_db()` yuqorida allaqachon `alembic upgrade head` ni
+            # bajardi; bu yerda faqat natijadagi versiyani ko'rsatamiz.
+            from alembic.runtime.migration import MigrationContext
+
+            from backend.app.db import engine
+
+            with engine.connect() as connection:
+                revision = MigrationContext.configure(connection).get_current_revision()
+            print(json.dumps({"status": "ok", "revision": revision}, ensure_ascii=False))
             return 0
         if args.command == "import-oak":
             run = import_registry(db, url=args.url)

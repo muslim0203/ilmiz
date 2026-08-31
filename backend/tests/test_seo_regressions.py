@@ -158,3 +158,7 @@ class SeoRegressionTests(unittest.TestCase):
     def test_malformed_and_credential_urls_are_not_emitted(self):
         for value in ("http://", "https://user:secret@example.com/a", "https://a.test/has space"):
             self.assertIsNone(seo.web_url(value))
+
+
+if __name__ == "__main__":
+    unittest.main()
