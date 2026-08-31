@@ -9,6 +9,7 @@ PUBLIC_DEPLOY_FILES = {
     'check_repository.py', 'package_runtime.py', 'prepare_staging.py',
     'requirements-ovh-20260831.txt', 'runtime-constraints.txt',
     'test_prepare_staging.py', 'test_repository_guard.py',
+    'ci_deploy.py', 'test_ci_deploy.py',
 }
 
 

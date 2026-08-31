@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not interrupt an active deployment when another push arrives.
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -61,3 +62,34 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+
+  deploy:
+    name: Deploy private staging
+    needs: verify
+    if: >-
+      github.repository == 'muslim0203/ilmiz' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.OVH_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    environment: ovh-staging
+    concurrency:
+      group: ovh-staging-deployment
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ilmiz-runtime-${{ github.sha }}
+          path: runtime
+      - name: Deploy the verified archive through restricted SSH
+        env:
+          OVH_DEPLOY_HOST: ${{ secrets.OVH_DEPLOY_HOST }}
+          OVH_DEPLOY_USER: ${{ secrets.OVH_DEPLOY_USER }}
+          OVH_DEPLOY_KEY: ${{ secrets.OVH_DEPLOY_KEY }}
+          OVH_KNOWN_HOSTS: ${{ secrets.OVH_KNOWN_HOSTS }}
+          RELEASE_ID: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 deploy/ci_deploy.py runtime/runtime.tar.gz "$RELEASE_ID"
