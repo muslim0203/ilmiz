@@ -243,9 +243,27 @@ turli yil), shuning uchun bu takror yozuv emas — Infolib holatining
 takrori: **#312 ga boshqa jurnalning sayti berilgan** va uning 50 maqolasi
 aslida #491 niki.
 
-Hal qilinmagan: #312 ning haqiqiy sayti topilmadi. Tuzatishdan oldin uni
-aniqlash kerak, aks holda maqolalarni ko'chirib, #312 ni saytsiz
-qoldiramiz.
+**Tuzatildi — 2026-08-31.** #312 ning haqiqiy uyi topildi: nashriyotning
+o'z sayti `tipme.uz` da «TTIT jurnali» bo'limi bor
+(`https://tipme.uz/uz/pages/center/ttvit_magazine`), u yerda 10 ta son
+joylangan. TTIT = **T**ibbiyot, **T**a'lim va **I**nnovatsion
+**T**adqiqotlar, ya'ni #312 ning nomi.
+
+Diqqat: bu OJS emas — sonlar **PDF fayl** sifatida qo'yilgan, maqola
+darajasida metama'lumot yo'q. Ya'ni #312 ni OAI orqali yig'ib bo'lmaydi va
+u 0 maqola bilan qoladi.
+
+Qilingan ish:
+
+- 50 maqola #312 dan #491 ga ko'chirildi (o'chirilmadi — ular haqiqatan
+  #491 niki, uning OAI endpointidan yig'ilgan).
+- #312 ning ikkita noto'g'ri OAI manbasi o'chirildi (ikkalasi ham `failed`
+  edi va bironta yozuv ushlab turmagan).
+- #312 ning sayti `tipme.uz/.../ttvit_magazine` ga o'zgartirildi va
+  `manual` deb belgilandi — importlar unga tegmaydi.
+
+OAK reestrida va tadqiq.uz da havola hali ham xato; ularni «manbaga
+moslash» uchun orqaga qaytarmang.
 
 ---
 
