@@ -56,7 +56,6 @@ tildagi nomi bo'lishi mumkin (u holda birlashtirish kerak).
 
 | Juft | Umumiy maqola | Izoh |
 | --- | --- | --- |
-| #458 Спорт илм-фанининг... ↔ #156 Фан спортга | 287 / 287 | bir xil ISSN 3030-3087, nashriyotlar har xil |
 | #263 Наука и инновационные... ↔ #453 Илм-фан ва технологиялар | 98 / 98 | bir xil ISSN 0009-0003, nashriyotlar har xil |
 | #457 Фан ва жамият ↔ #39 Ilim ha'm ja'miyet | 50 / 50 | bir nashriyot — ehtimol bitta jurnalning ikki nomi |
 | #27 Қорақалпоғистон... ↔ #89 Қарақалпақ ДУ хабаршысы | 28 / 28 | bir nashriyot, bir xil ISSN 2010-9075 |
@@ -264,6 +263,39 @@ Qilingan ish:
 
 OAK reestrida va tadqiq.uz da havola hali ham xato; ularni «manbaga
 moslash» uchun orqaga qaytarmang.
+
+---
+
+## #156 «Фан спортга» — 2026-08-31
+
+OAK reestri #156 ga #458 ning **saytini ham, ISSN'ini ham** bergan.
+`sport-science.uz/` ildizi to'g'ridan-to'g'ri `/index.php/journal` ga
+yo'naltiradi, ya'ni ikkala yozuv bitta OJS jurnaliga ishora qilardi.
+Saytda esa bitta jurnal bor (`setSpec: journal`).
+
+ISSN portali ikkalasini hal qildi:
+
+| ISSN | Jurnal | Turi |
+| --- | --- | --- |
+| 3030-3087 | Sport ilm-fanining dolzarb muammolari (**#458**) | onlayn, `sport-science.uz/index.php/journal` |
+| 2181-7804 | Fan-sportga ilmij-nazarij žurnal (**#156**) | **bosma** |
+
+Qo'shimcha tasdiq: OAI `repositoryName` = «Sport ilm-fanining dolzarb
+muammolari», va OAI admin pochtasi `institut@sportedu.uz` — `sportedu.uz`
+esa #458 ning nashriyoti (qayta tayyorlash instituti) sayti.
+
+#156 ning sayti izlandi va topilmadi. Universitet sayti (`jtsu.uz`)
+`sport-jurnal.uz` ga havola beradi, lekin arxivdan tekshirilganda u
+boshqa jurnal — «O'zDJTSU Ilmiy axborotnomasi» (hozir to'xtatilgan).
+ISSN portali #156 ni bosma deb ko'rsatgani uchun sayt bo'sh qoldirildi.
+
+Qilingan ish: ISSN `2181-7804` ga tuzatildi, sayt bo'shatildi (ikkalasi
+`manual`), 2 ta noto'g'ri OAI manbasi va 290 nusxa maqola o'chirildi.
+
+290 maqola **ko'chirilmadi, o'chirildi**: ularning OAI identifikatorlari
+#458 dagilar bilan 290 dan 290 tasi bir xil edi, ya'ni ular allaqachon
+o'z jurnalida turibdi. Foydalanuvchi tasdiqlagan maqola yo'q edi.
+Jami maqola: 104809 -> 104519.
 
 ---
 
