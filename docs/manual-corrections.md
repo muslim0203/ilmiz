@@ -205,6 +205,50 @@ ustuni o'tkazib yuborilgan edi — ikkisiga ham bir xil axlat tushgan.
 
 ---
 
+## Yig'ilmagan jurnallar — 2026-08-31 tekshiruvi
+
+Sog'lom OAI manbasi bo'lib, lekin maqolasi yo'q 4 ta jurnal tekshirildi.
+Uchtasining ombori haqiqatan bo'sh (`noRecordsMatch`) — bu bizning xatomiz
+emas, jurnal hali OAI orqali hech narsa e'lon qilmagan:
+
+| Jurnal | Manba |
+| --- | --- |
+| Фан ва технологиялар тараққиёти | `journal.bstu.uz/index.php/FTT/oai` |
+| Management and Future Technologies | `journals.vatanuniversity.uz/index.php/home/oai` |
+| Zamonaviy biologiya va genetika | `jurnal.cspu.uz/index.php/mbg/oai` |
+
+Ularni qayta-qayta yig'ishga urinish keraksiz; jurnal nashr boshlaganda
+o'zi to'ladi.
+
+### Yangi shubhali juft: #312 va #491
+
+To'rtinchisi — `tibbiyot-talimi-va-innovatsiyalari.uz/index.php/TTI/oai` —
+52 yozuv qaytardi, lekin ularning 50 tasi allaqachon **boshqa jurnal**
+ostida turgan ekan:
+
+| | #312 | #491 |
+| --- | --- | --- |
+| Nom | Tibbiyot, ta'lim va innovatsion tadqiqotlar | Tibbiyot ta'limi va innovatsiyalari |
+| Nashriyot (OAK) | Тиббиёт ходимлари касбий малакасини ривожлантириш маркази | Тошкент давлат тиббиёт университети |
+| OAK yili | 2025 | 2026 |
+| Sayt | `.../TTI/about` | `.../TTI/index` |
+| Maqola | 50 | 0 |
+
+Ikkala yozuv ham bitta OJS jurnaliga ishora qiladi. Saytning o'z nomi —
+OAI `repositoryName` va sahifa sarlavhasi bo'yicha — **TIBBIYOT TA'LIMI VA
+INNOVATSIYALARI**, ya'ni #491 ning nomi bilan aynan mos. e-ISSN 3093-8856.
+
+OAK reestri ikkalasini **alohida jurnal** deb ko'rsatadi (turli nashriyot,
+turli yil), shuning uchun bu takror yozuv emas — Infolib holatining
+takrori: **#312 ga boshqa jurnalning sayti berilgan** va uning 50 maqolasi
+aslida #491 niki.
+
+Hal qilinmagan: #312 ning haqiqiy sayti topilmadi. Tuzatishdan oldin uni
+aniqlash kerak, aks holda maqolalarni ko'chirib, #312 ni saytsiz
+qoldiramiz.
+
+---
+
 ## Ma'lum muammolar
 
 - `source_records` da ~8300 yetim yozuv bor (maqolasi o'chirilgan, yozuvi
