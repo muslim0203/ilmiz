@@ -460,7 +460,17 @@ def _ingest_source_by_id(source_id: int, from_date: str | None, page_limit: int 
 
 
 def ingest_all_sources(db: Session, *, from_date: str | None = None, page_limit: int | None = None, workers: int = 3, selected_source_ids: list[int] | None = None) -> dict[str, object]:
-    source_ids = selected_source_ids or list(db.scalars(select(HarvestSource.id).where(HarvestSource.status == "healthy")))
+    # Faqat OAI manbalari. OpenAlex import qilgan manbalar `metadata_prefix`
+    # bilan ajratiladi — ularni OAI harvesteriga bersak, so'rov xato bo'lib
+    # manba `failed` deb belgilanardi.
+    source_ids = selected_source_ids or list(
+        db.scalars(
+            select(HarvestSource.id).where(
+                HarvestSource.status == "healthy",
+                HarvestSource.metadata_prefix == "oai_dc",
+            )
+        )
+    )
     totals: dict[str, object] = {"sources": len(source_ids), "succeeded": 0, "failed": 0, "seen": 0, "created": 0, "updated": 0, "deleted": 0}
     errors: list[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=min(max(1, workers), len(source_ids) or 1)) as executor:

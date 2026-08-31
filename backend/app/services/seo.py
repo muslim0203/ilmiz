@@ -370,6 +370,19 @@ def cached(key: str, produce):
     return _cached(key, produce)
 
 
+def invalidate(key: str | None = None) -> None:
+    """Keshni bo'shatadi.
+
+    Ma'lumot to'g'ridan-to'g'ri o'zgartirilganda (masalan OpenAlex importi)
+    chaqiriladi: aks holda jurnal sahifasi TTL tugaguncha eski sanoqni
+    ko'rsatib turadi.
+    """
+    if key is None:
+        _cache.clear()
+    else:
+        _cache.pop(key, None)
+
+
 def reset_cache() -> None:
     """Harvest yoki import tugagach chaqiriladi."""
     _cache.clear()

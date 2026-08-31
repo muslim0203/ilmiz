@@ -84,3 +84,52 @@ tegilmasin.
 
 API bepul, kalit talab qilmaydi; so'rovlarda `mailto` ko'rsatiladi.
 Kutubxona kerak emas — `httpx` yetarli.
+
+
+---
+
+## Birinchi import — 2026-08-31
+
+«Kimyo va kimyo texnologiyasi» (#15, ISSN 1992-9498) dan boshlandi.
+
+```bash
+.venv/Scripts/python.exe backend/manage.py openalex kimyo-va-kimyo-texnologiyasi
+.venv/Scripts/python.exe backend/manage.py openalex kimyo-va-kimyo-texnologiyasi --apply
+```
+
+Natija: OpenAlex'dagi 447 ishdan **427 tasi** qo'shildi (20 tasi maqola
+turida emas — dataset, tahririyat xati va shu kabilar). Jurnal 0 dan 427
+maqolaga chiqdi, 34 ta son. Jami maqola: 104 519 -> 104 946.
+
+To'ldirilganlik (40 ta yozuv namunasida):
+
+| Maydon | % |
+| --- | --- |
+| sarlavha, annotatsiya, sana, DOI, til, havola | 100 |
+| mualliflar | 92 |
+| jild, son | 88 |
+| betlar | 18 |
+
+### Provenance
+
+Yozuvlar `harvest_sources` da alohida manba sifatida belgilanadi:
+`metadata_prefix='openalex'`, `repository_name='OpenAlex'`. Har maqolaning
+`source_records` yozuvida `openalex:W…` identifikatori saqlanadi.
+
+`ingest_all_sources` endi faqat `metadata_prefix='oai_dc'` manbalarini
+oladi. Bu himoya kerak edi: aks holda `harvest-all` OpenAlex URL'ini OAI
+deb yig'ishga urinib, manbani `failed` deb belgilardi.
+
+### Mavjud ma'lumot ustiga yozilmaydi
+
+Import DOI yoki OpenAlex ID bo'yicha topilgan maqolani o'tkazib yuboradi.
+Jurnalning o'z OAI endpointi ishlayotgan bo'lsa, o'sha ustun bo'lib
+qolaveradi — OpenAlex uchinchi tomon indeksi.
+
+### Yo'l-yo'lakay
+
+Jurnal sanoqlari 300 soniya keshlanadi. Import qilgan odam natijani
+kutib turmasligi uchun `seo.invalidate("journal_counts")` qo'shildi.
+
+FTS indeksi triggerlar orqali o'zi yangilandi — yangi maqolalar darhol
+qidiruvda topiladi.

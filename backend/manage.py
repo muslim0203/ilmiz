@@ -76,6 +76,11 @@ def main() -> int:
     # o'zi ushlab turadi; bu buyruq ommaviy amaldan keyingi tekshiruv uchun.
     fts = subparsers.add_parser("fts")
     fts.add_argument("--rebuild", action="store_true")
+    # OpenAlex'dan maqola olish. Standart holat — quruq yurgizish.
+    openalex_cmd = subparsers.add_parser("openalex")
+    openalex_cmd.add_argument("journal_slug")
+    openalex_cmd.add_argument("--limit", type=int)
+    openalex_cmd.add_argument("--apply", action="store_true")
     import_oak = subparsers.add_parser("import-oak")
     import_oak.add_argument("--url", default="https://journal-statistics-oak.vercel.app/")
     queue_audits = subparsers.add_parser("queue-audits")
@@ -154,6 +159,21 @@ def main() -> int:
         seed_database(db)
         if args.command == "init":
             print(json.dumps({"status": "ok", "message": "Database initialized"}, ensure_ascii=False))
+            return 0
+        if args.command == "openalex":
+            from sqlalchemy import select as _select
+
+            from backend.app.models import Journal as _Journal
+            from backend.app.services import openalex
+
+            journal = db.scalar(_select(_Journal).where(_Journal.slug == args.journal_slug))
+            if journal is None:
+                print(json.dumps({"status": "jurnal topilmadi"}, ensure_ascii=False))
+                return 1
+            result = openalex.import_journal(
+                db, journal, limit=args.limit, dry_run=not args.apply
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "fts":
             from backend.app.services import search_index
