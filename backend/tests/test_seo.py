@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 database_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 database_file.close()
@@ -142,6 +143,7 @@ class SeoRoutesTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("application/json", response.headers["content-type"])
 
+    @patch.dict(os.environ, {"ILMIZ_NOINDEX": "", "ILMIZ_SITE_URL": "https://ilmiz.test"})
     def test_robots_points_at_the_sitemap(self) -> None:
         body = self.client.get("/robots.txt").text
         self.assertIn("Sitemap: https://ilmiz.test/sitemap.xml", body)
