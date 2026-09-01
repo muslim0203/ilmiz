@@ -81,6 +81,10 @@ def main() -> int:
     openalex_cmd.add_argument("journal_slug")
     openalex_cmd.add_argument("--limit", type=int)
     openalex_cmd.add_argument("--apply", action="store_true")
+    # Qaysi jurnallarni import qilish mumkinligini bir marta aniqlaydi.
+    scan = subparsers.add_parser("openalex-scan")
+    scan.add_argument("--all", action="store_true", help="maqolasi borlarini ham tekshirish")
+    scan.add_argument("--workers", type=int, default=4)
     import_oak = subparsers.add_parser("import-oak")
     import_oak.add_argument("--url", default="https://journal-statistics-oak.vercel.app/")
     queue_audits = subparsers.add_parser("queue-audits")
@@ -159,6 +163,23 @@ def main() -> int:
         seed_database(db)
         if args.command == "init":
             print(json.dumps({"status": "ok", "message": "Database initialized"}, ensure_ascii=False))
+            return 0
+        if args.command == "openalex-scan":
+            from backend.app.services import openalex
+
+            rows = openalex.scan_candidates(
+                db, only_empty=not args.all, workers=args.workers
+            )
+            hits = [r for r in rows if r["found"]]
+            print(json.dumps({
+                "tekshirildi": len(rows),
+                "topildi": len(hits),
+                "jami_ishlar": sum(r["works"] for r in hits),
+                "jurnallar": [
+                    {k: r[k] for k in ("slug", "name", "issn_used", "source", "works")}
+                    for r in hits
+                ],
+            }, ensure_ascii=False, indent=2))
             return 0
         if args.command == "openalex":
             from sqlalchemy import select as _select

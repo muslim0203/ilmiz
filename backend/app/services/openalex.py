@@ -278,3 +278,48 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
         seo.invalidate("journal_counts")
     stats["rejim"] = "dry-run" if dry_run else "apply"
     return stats
+
+
+def scan_candidates(db, *, only_empty: bool = True, workers: int = 4) -> list[dict]:
+    """Jurnallarni OpenAlex'da qidirib, natijani ro'yxat qilib qaytaradi.
+
+    Bazaga hech narsa yozmaydi — bu faqat qaysi jurnalni import qilish
+    mumkinligini ko'rsatuvchi tekshiruv.
+
+    Ikkala ISSN ham sinaladi: bosma ISSN OpenAlex'da ko'pincha ro'yxatga
+    olinmagan («Adabiy meros» aynan shu sababli topilmay qolgan edi).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlalchemy import select
+
+    from ..models import Article, Journal
+
+    statement = select(Journal).order_by(Journal.name)
+    if only_empty:
+        statement = statement.where(
+            ~select(Article.id)
+            .where(Article.journal_id == Journal.id, Article.is_deleted.is_(False))
+            .exists()
+        )
+    journals = [
+        {"id": j.id, "slug": j.slug, "name": j.name,
+         "issns": [v for v in (j.issn, j.eissn) if v]}
+        for j in db.scalars(statement)
+    ]
+    todo = [entry for entry in journals if entry["issns"]]
+
+    def probe(entry: dict) -> dict:
+        with _client() as client:
+            for issn in entry["issns"]:
+                found = find_source(issn, client=client)
+                if found:
+                    return {**entry, "found": True, "issn_used": issn,
+                            "source": found["name"], "works": found["works_count"]}
+        return {**entry, "found": False, "issn_used": None, "source": None, "works": 0}
+
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        results = list(pool.map(probe, todo))
+
+    results.sort(key=lambda row: -row["works"])
+    return results
