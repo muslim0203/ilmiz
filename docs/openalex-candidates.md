@@ -8,10 +8,21 @@
 | OpenAlex'da topildi | **48** |
 | Jami mavjud ishlar | **28 164** |
 
-## Import qilishga tayyor
+## Import qilingan — 2026-09-01
 
-Har birida 1000 tadan kam ish — ya'ni hajmi OAK ro'yxatidagi
-milliy nashrga mos keladi.
+Har birida 1000 tadan kam ish — ya'ni hajmi OAK ro'yxatidagi milliy
+nashrga mos keladi. **45 tasi ham import qilindi**: 7 143 maqola
+qo'shildi (141 soniyada). Jami maqola 106 760 -> **113 903**,
+maqolasiz jurnallar 341 -> **298**.
+
+Ikkitasi 0 ta qo'shdi — ularning ishlari DOI bo'yicha allaqachon
+bazada bor edi yoki maqola turida emas.
+
+Sessiyada qo'lda tuzatilgan ikki jurnal ham shu yerda to'ldi va bu
+tuzatishlar to'g'ri bo'lganini tasdiqlaydi: **Infolib** (birinchi kun
+Lingvospektr'dan ajratilgan) 111 maqola oldi, **Фан спортга** (ISSN'i
+2181-7804 ga tuzatilgan) 86 maqola oldi. Ikkalasi ham to'g'ri ISSN
+bo'lmaganda topilmasdi.
 
 | Jurnal | Ishlar | ISSN | slug |
 | --- | ---: | --- | --- |
