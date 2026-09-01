@@ -72,6 +72,35 @@ bo'lmaganda topilmasdi.
 | Zamonaviy fan, ta’lim va tarbiyaning dolzarb m | 13 | 2181-9750 | `zamonaviy-fan-ta-lim-va-tarbiyaning-dolzarb-muammolari-mintaqada-zamonaviy-fan-ta-lim-va-tarbiya-ning-dolzarb-muammolari-elektron-ilmiy-to-plam` |
 | Техносфера хавфсизлиги | 1 | 2181-3981 | `texnosfera-xavfsizligi` |
 
+## Katta uchtasi — 2026-09-01 tekshiruvi
+
+### Import qilindi
+
+**Химия природных соединений** (#13) — 15 713 maqola qo'shildi,
+1965–2026. OpenAlex manbasi «Chemistry of Natural Compounds» — bu shu
+jurnalning **Springer tarjima nashri**, va bizdagi ISSN'lar
+(0009-3130, 1573-8388) aynan o'shaniki. Ya'ni maqolalar haqiqatan
+jurnalniki, lekin inglizcha tarjimada.
+
+### Import qilinmadi — noto'g'ri biriktirish xavfi
+
+**Замонавий жамият ва инновациялар** (#316). ISSN 2181-1415 bazamizda
+**ikkita** jurnalda: #316 (0 maqola) va #214 «Жамият ва инновациялар /
+Общество и инновации» (5 628 maqola). OpenAlex manbasi «Общество и
+инновации» — bu #214 ning nomi. #316 ning **sayti ham** #214 niki:
+`inscience.uz/index.php/socinov/index`.
+
+Import qilinsa, #214 dagi maqolalar ikkinchi marta boshqa jurnal ostiga
+tushardi. Bu Infolib, TTIT va «Фан спортга» bilan bir xil naqsh —
+beshinchi holat.
+
+**Логистика ва иқтисодиёт** (#216). OpenAlex ISSN 2181-2128 ni
+«Nashrlar» degan manbaga bog'lagan; nashriyoti ko'rsatilmagan.
+Yozuvlarning DOI'lari (hammasi 10.60078 prefiksi) `e-itt.uz` saytiga
+olib boradi — nomi jurnalimizga mos kelmaydi. Bog'lanish tasdiqlanmagan.
+
+---
+
 ## Avval tekshirish kerak
 
 1000 tadan ko'p ish. Bunday hajm odatda jurnalning **butun**
