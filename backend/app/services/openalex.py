@@ -197,12 +197,14 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
     from ..models import Article, SourceRecord
     from .search_text import article_search_text, normalize
 
-    issn = journal.issn or journal.eissn
-    if not issn:
+    # Ikkala ISSN ham sinaladi. Bosma ISSN ko'pincha OpenAlex'da yo'q:
+    # «Adabiy meros» faqat e-ISSN bo'yicha topiladi.
+    candidates = [value for value in (journal.issn, journal.eissn) if value]
+    if not candidates:
         return {"status": "issn yo‘q"}
-    found = find_source(issn)
+    found = next((result for result in map(find_source, candidates) if result), None)
     if found is None:
-        return {"status": "OpenAlex'da topilmadi", "issn": issn}
+        return {"status": "OpenAlex'da topilmadi", "issn": candidates}
 
     source = None if dry_run else _harvest_source(db, journal, found["id"])
     now = datetime.now(timezone.utc)

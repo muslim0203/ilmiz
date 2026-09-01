@@ -131,6 +131,32 @@ class ImportTest(unittest.TestCase):
         ).all()
         self.assertEqual(oai, [])
 
+    def test_both_issns_are_tried(self) -> None:
+        """Bosma ISSN ko'pincha OpenAlex'da yo'q — e-ISSN ham sinalsin.
+
+        «Adabiy meros» aynan shu sababli topilmay qolgan edi.
+        """
+        from backend.app.services import openalex as module
+
+        asked: list[str] = []
+
+        def fake_find(issn, **kwargs):
+            asked.append(issn)
+            return {"id": "S1", "name": "X", "works_count": 0} if issn == "3093-916X" else None
+
+        original_find, original_iter = module.find_source, module.iter_works
+        module.find_source = fake_find
+        module.iter_works = lambda *args, **kwargs: iter(())  # tarmoqqa chiqmasin
+        try:
+            self.journal.issn = "2181-1320"
+            self.journal.eissn = "3093-916X"
+            self.db.commit()
+            result = module.import_journal(self.db, self.journal, dry_run=True)
+        finally:
+            module.find_source, module.iter_works = original_find, original_iter
+        self.assertEqual(asked, ["2181-1320", "3093-916X"])
+        self.assertEqual(result["status"], "ok")
+
     def test_journal_without_issn_is_refused(self) -> None:
         self.journal.issn = None
         self.db.commit()

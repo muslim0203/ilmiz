@@ -133,3 +133,29 @@ kutib turmasligi uchun `seo.invalidate("journal_counts")` qo'shildi.
 
 FTS indeksi triggerlar orqali o'zi yangilandi — yangi maqolalar darhol
 qidiruvda topiladi.
+
+
+## Keyingi to'rtta jurnal — 2026-09-01
+
+| Jurnal | OpenAlex'da | Qo'shildi |
+| --- | --- | --- |
+| Кимёвий технология. Назорат ва бошқарув | 245 | 238 |
+| Тошкент давлат техника университети хабарлари | 134 | 133 |
+| Adabiy meros | 62 | 62 |
+| Samarqand DU ilmiy tadqiqotlar axborotnomasi | 1 403 | 1 381 |
+
+Jami maqola: 104 946 -> **106 760**. Maqolasiz jurnallar: 346 -> **341**.
+
+### Tuzatilgan xato: ikkala ISSN sinalishi kerak
+
+`import_journal` faqat `journal.issn or journal.eissn` ni, ya'ni
+**bittasini** sinardi. «Adabiy meros» shu sababli «OpenAlex'da topilmadi»
+deb qaytdi: uning bosma ISSN'i (2181-1320) OpenAlex'da yo'q, e-ISSN'i
+(3093-916X) esa bor.
+
+Endi ikkalasi ham sinaladi. Bu boshqa jurnallarga ham tegishli bo'lishi
+mumkin — bosma ISSN OpenAlex'da ko'pincha ro'yxatga olinmagan.
+
+Diqqat: «Adabiy meros» ning OpenAlex yozuvida ISSN'lar
+`['2181-2500', '3093-916X']` — bizdagi bosma ISSN 2181-1320 ularning
+hech biriga mos kelmaydi. Qaysi biri to'g'ri ekani tekshirilmagan.
