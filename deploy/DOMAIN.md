@@ -202,6 +202,44 @@ nslookup -type=MX ilmiz.uz rdns1.ahost.uz   # mail.ilmiz.uz
 nslookup mail.ilmiz.uz rdns1.ahost.uz       # 185.196.212.52
 ```
 
+## Serverni yangilash (02.09.2026)
+
+Server git orqali emas, fayllarni nusxalash bilan joylashtirilgan
+(`/opt/ilmiz/app` da `.git` yo'q), shuning uchun `git pull` ishlamaydi.
+Yangilash tartibi quyidagicha bo'ldi.
+
+**Holat:** serverdagi kod 31-avgustdagi holatda edi — migratsiyalar
+katalogi, FTS5 indeksi va OpenAlex xizmati umuman yo'q, `alembic`
+paketi ham o'rnatilmagan.
+
+**Bajarilgani:**
+
+1. Zaxira: `/opt/ilmiz/app-before-migrations-20260902-1741` va
+   `VACUUM INTO` bilan `ilmiz.backup-20260902-1741-pre-migrations.db`
+   (1.03 GB, ruxsati 600).
+2. `alembic==1.19.1` venv'ga o'rnatildi (mahalliy versiya bilan bir xil).
+3. 18 ta fayl yuklandi: `alembic.ini`, `backend/migrations/**`,
+   `db.py`, `main.py`, `ingest.py`, `openalex.py`, `search_index.py`,
+   `manage.py` va testlar. Nazorat summalari taqqoslab tekshirildi.
+4. Serverda **300 ta test o'tdi** (Python 3.14.4). `DATABASE_URL` ni
+   o'chirib ishga tushirish shart: `test_auth.py` uni `setdefault`
+   bilan oladi, ya'ni muhitda qolsa ishlab turgan bazaga tegardi.
+5. Xizmat to'xtatilib, `init_db()` qo'lda bajarildi — **39 soniya**.
+   Startda emas, chunki `TimeoutStartSec` 90 soniya va FTS qurilishi
+   unga sig'masligi mumkin edi.
+
+**Natija:** `ec3312949a85` belgilandi, so'ng `6b31a7083731` va
+`b83feb85c26a` qo'llandi. Baza 1.230 -> 1.305 GB. Ma'lumot butun
+qoldi: 467 jurnal, 104 809 maqola, 2 foydalanuvchi, 5 tasdiqlangan
+maqola, 1 sessiya — hammasi o'zgarmadi.
+
+FTS5 tekshiruvi serverda: `search_index.available()` -> True,
+so'rovlar 15-38 ms, API 54-125 ms, uchala sinxronlash trigger'i joyida.
+
+**Hali qilinmagan:** serverdagi bazada OpenAlex importlari yo'q —
+mahalliy bazada 129 616, serverda 104 809 maqola. Kod endi tayyor,
+lekin importning o'zi alohida ish.
+
 ## Diqqat qilinadigan joylar
 
 **Baza almashtirilmasin.** `install_staging.sh` faqat birinchi o'rnatish
