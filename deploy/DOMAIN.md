@@ -29,14 +29,14 @@ aHOST'ning `rdns1.ahost.uz`, `rdns2.ahost.uz`, `rdns3.ahost.uz`
 serverlariga bog'laydi. `DNS hosting -> DNS manager` da zona:
 
 ```
-@     A       14400   51.79.165.112
-www   CNAME   14400   ilmiz.uz
+@      A       14400   51.79.165.112     # sayt
+mail   A       14400   185.196.212.52    # aHOST pochta serveri
+www    CNAME   14400   ilmiz.uz
+@      MX  0   14400   mail.ilmiz.uz
 ```
 
-Qolgan yozuvlar (mail/ftp CNAME, MX, SPF, DKIM, DMARC) aHOST avtomatik
-yaratgan andozadan qolgan. Ular pochta uchun; serverda pochta xizmati
-yo'q, shuning uchun `@ilmiz.uz` manzillariga yozilgan xat yetib
-bormaydi. Saytga ta'siri yo'q.
+`ftp` CNAME, SPF, DKIM va DMARC yozuvlari aHOST andozasidan qolgan.
+Pochta sozlamalari quyida, «Pochta» bo'limida.
 
 Zona uchala nom serverida ham to'g'ri javob beradi:
 
@@ -124,6 +124,40 @@ curl -s https://ilmiz.uz/sitemap.xml | head -5
 `robots.txt` da `Sitemap: https://ilmiz.uz/sitemap.xml` va indekslashga
 ruxsat ko'rinishi kerak. Agar `Disallow: /` chiqsa, demak
 `ILMIZ_SITE_URL` HTTPS emas yoki `ILMIZ_NOINDEX=1` qolgan.
+
+## Pochta (@ilmiz.uz)
+
+aHOST domen bilan birga **bepul pochta yo'naltirish** beradi. Ilova
+o'zi pochta yubormaydi (kodda SMTP yo'q), shuning uchun bu faqat
+aloqa manzillari uchun.
+
+Sozlangan yo'naltirishlar — `DNS hosting -> Email forwarding`:
+
+| Manzil | Qayerga |
+| --- | --- |
+| info@ilmiz.uz | journalmaturidi@gmail.com |
+| admin@ilmiz.uz | journalmaturidi@gmail.com |
+
+**Nega `mail` alohida A yozuvi.** aHOST yo'naltirishi MX yozuvi
+`185.196.212.52` ga qaraydigan nomga ko'rsatilishini talab qiladi.
+`ilmiz.uz` ning o'zi esa sayt serveriga (51.79.165.112) qarashi
+shart. Shuning uchun andozadagi `mail CNAME -> ilmiz.uz` o'chirilib,
+o'rniga `mail A -> 185.196.212.52` qo'yildi va MX `mail.ilmiz.uz` ga
+qaratildi.
+
+**Cheklov:** bu faqat **qabul qilish**. `@ilmiz.uz` dan xat yuborish
+uchun haqiqiy pochta quti (pullik xizmat) kerak bo'ladi.
+
+Panel DNS tarqalmaguncha «Доменное имя ilmiz.uz не направлено на
+почтовый сервер» degan ogohlantirishni ko'rsatib turadi — bu kutilgan
+holat, ular ommaviy DNS orqali tekshiradi.
+
+Tekshirish:
+
+```bash
+nslookup -type=MX ilmiz.uz rdns1.ahost.uz   # mail.ilmiz.uz
+nslookup mail.ilmiz.uz rdns1.ahost.uz       # 185.196.212.52
+```
 
 ## Diqqat qilinadigan joylar
 
