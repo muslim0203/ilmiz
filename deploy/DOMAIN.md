@@ -44,13 +44,11 @@ Zona uchala nom serverida ham to'g'ri javob beradi:
 nslookup ilmiz.uz rdns1.ahost.uz   # -> 51.79.165.112
 ```
 
-**Kutilayotgan qadam:** `.uz` reyestri hali eski delegatsiyani
-(`dns1/dns2.ahost.uz`, `ns1/ns2.ahost.cloud`) ko'rsatmoqda. aHOST
-paneli 24 soatgacha tarqalishini ogohlantiradi. Tayyor bo'lganini
-shundan bilasiz:
+Delegatsiya ham tarqaldi (02.09.2026): reyestr `rdns1..3.ahost.uz`
+ni ko'rsatadi va ommaviy DNS domenni to'g'ri hal qiladi.
 
 ```bash
-nslookup -type=NS ilmiz.uz ns1.uz    # rdns1..3.ahost.uz chiqishi kerak
+nslookup -type=NS ilmiz.uz ns1.uz    # rdns1..3.ahost.uz
 nslookup ilmiz.uz 8.8.8.8            # 51.79.165.112
 ```
 
@@ -174,9 +172,8 @@ qaratildi.
 **Cheklov:** bu faqat **qabul qilish**. `@ilmiz.uz` dan xat yuborish
 uchun haqiqiy pochta quti (pullik xizmat) kerak bo'ladi.
 
-Panel DNS tarqalmaguncha «Доменное имя ilmiz.uz не направлено на
-почтовый сервер» degan ogohlantirishni ko'rsatib turadi — bu kutilgan
-holat, ular ommaviy DNS orqali tekshiradi.
+Yo'naltirish faol: DNS tarqalgach panel «не направлено на почтовый
+сервер» ogohlantirishini olib tashladi (02.09.2026 tekshirildi).
 
 Tekshirish:
 
