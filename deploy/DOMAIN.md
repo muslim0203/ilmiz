@@ -20,19 +20,38 @@ saqlanadi. Bu ataylab shunday.
 
 ## Bosqichlar
 
-### 1. DNS — siz qilasiz
+### 1. DNS — bajarildi (02.09.2026)
 
-Registrator panelida ilmiz.uz uchun:
+Registrator: **aHOST** (`clients.ahost.uz`, domen id 295388).
+
+`Nameservers` yorlig'ida **Use DNS Manager** tanlangan — bu domenni
+aHOST'ning `rdns1.ahost.uz`, `rdns2.ahost.uz`, `rdns3.ahost.uz`
+serverlariga bog'laydi. `DNS hosting -> DNS manager` da zona:
 
 ```
-A     ilmiz.uz       -> <server IP>
-A     www.ilmiz.uz   -> <server IP>
+@     A       14400   51.79.165.112
+www   CNAME   14400   ilmiz.uz
 ```
 
-Tarqalishini kuting va tekshiring:
+Qolgan yozuvlar (mail/ftp CNAME, MX, SPF, DKIM, DMARC) aHOST avtomatik
+yaratgan andozadan qolgan. Ular pochta uchun; serverda pochta xizmati
+yo'q, shuning uchun `@ilmiz.uz` manzillariga yozilgan xat yetib
+bormaydi. Saytga ta'siri yo'q.
+
+Zona uchala nom serverida ham to'g'ri javob beradi:
 
 ```bash
-dig +short ilmiz.uz
+nslookup ilmiz.uz rdns1.ahost.uz   # -> 51.79.165.112
+```
+
+**Kutilayotgan qadam:** `.uz` reyestri hali eski delegatsiyani
+(`dns1/dns2.ahost.uz`, `ns1/ns2.ahost.cloud`) ko'rsatmoqda. aHOST
+paneli 24 soatgacha tarqalishini ogohlantiradi. Tayyor bo'lganini
+shundan bilasiz:
+
+```bash
+nslookup -type=NS ilmiz.uz ns1.uz    # rdns1..3.ahost.uz chiqishi kerak
+nslookup ilmiz.uz 8.8.8.8            # 51.79.165.112
 ```
 
 ### 2. nginx
