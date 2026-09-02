@@ -52,7 +52,12 @@ nslookup -type=NS ilmiz.uz ns1.uz    # rdns1..3.ahost.uz
 nslookup ilmiz.uz 8.8.8.8            # 51.79.165.112
 ```
 
-### 2. nginx
+### 2. nginx — bajarildi (02.09.2026)
+
+Serverga nginx 1.28.3 o'rnatildi. `deploy/nginx-ilmiz.conf` faol;
+`http://ilmiz.uz` va `www` asosiy HTTPS manzilga 301 qaytaradi, asosiy
+HTTPS manzil esa ilovaga uzatiladi. Serverdagi UFW faol emas; tashqi 80/443
+ham javob berayotgani uchun OVH tarmoq devori bu portlarni to'smayapti.
 
 `deploy/nginx-ilmiz.conf` tayyor. Serverda:
 
@@ -67,7 +72,11 @@ sudo nginx -t
 qadamda hal bo'ladi. Avval faqat 80-portli blok ishlasin:
 443 bloklarini vaqtincha izohga oling, `nginx -t && sudo systemctl reload nginx`.
 
-### 3. TLS sertifikati
+### 3. TLS sertifikati — bajarildi (02.09.2026)
+
+Let's Encrypt sertifikati `ilmiz.uz` va `www.ilmiz.uz` uchun olindi;
+amal qilish muddati 2026-12-01. Certbot timer yoqildi va
+`renew --dry-run --no-random-sleep-on-renew` muvaffaqiyatli o'tdi.
 
 ```bash
 sudo certbot certonly --webroot -w /var/www/certbot -d ilmiz.uz -d www.ilmiz.uz
@@ -82,7 +91,13 @@ sudo nginx -t && sudo systemctl reload nginx
 Certbot yangilanishni o'zi rejalashtiradi; tekshirish:
 `sudo certbot renew --dry-run`.
 
-### 4. Ilova sozlamalari
+### 4. Ilova sozlamalari — domen qismi bajarildi (02.09.2026)
+
+Ishlayotgan xizmatning `/etc/ilmiz/staging.env` fayli xavfsiz zaxiralandi
+va `ILMIZ_SITE_URL=https://ilmiz.uz`, `ILMIZ_PUBLIC_URL=https://ilmiz.uz`,
+`ILMIZ_NOINDEX=0` qilib yangilandi. Xizmat nomi hozircha
+`ilmiz-staging.service`; bu nom ishlashiga ta'sir qilmaydi. Google OAuth va
+admin token sirlari hali serverda yo'q.
 
 `deploy/production.env.example` dan nusxa oling:
 
@@ -137,7 +152,12 @@ hal bo'lguncha saytda faqat Google orqali kirish ishlaydi:
 `available_providers()` sozlanmagan provayderni ro'yxatga qo'shmaydi,
 shuning uchun ORCID tugmasi shunchaki ko'rinmaydi.
 
-### 6. Tekshirish
+### 6. Tekshirish — domen va SEO bajarildi (02.09.2026)
+
+Tashqi tekshiruv: HTTPS 200, HTTP va `www` 301, sitemap 200, bosh sahifada
+`canonical=https://ilmiz.uz/` hamda `robots=index, follow`; `robots.txt`
+indekslashga ruxsat beradi va admin/auth API yo'llarini taqiqlaydi.
+`/api/auth/providers` sirlar kiritilmagani sabab hozircha bo'sh ro'yxat beradi.
 
 ```bash
 curl -sI https://ilmiz.uz | head -1
