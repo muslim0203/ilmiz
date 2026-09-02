@@ -18,10 +18,11 @@ set -euo pipefail
 DOMAIN=ilmiz.uz
 WWW=www.ilmiz.uz
 APP=127.0.0.1:8000
-REPO=/opt/ilmiz/app
+REPO=${REPO:-/opt/ilmiz/app}
 WEBROOT=/var/www/certbot
 LIVE=/etc/letsencrypt/live/$DOMAIN/fullchain.pem
-FULL_CONF=$REPO/deploy/nginx-ilmiz.conf
+FULL_CONF=${FULL_CONF:-$REPO/deploy/nginx-ilmiz.conf}
+CERTBOT_EMAIL=${CERTBOT_EMAIL:-info@ilmiz.uz}
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mXATO: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -98,7 +99,8 @@ if [ -f "$LIVE" ]; then
   echo "sertifikat allaqachon bor, yangilanishi tekshirilmoqda"
   certbot renew --quiet || true
 else
-  certbot certonly --webroot -w "$WEBROOT" -d "$DOMAIN" -d "$WWW"
+  certbot certonly --non-interactive --agree-tos --email "$CERTBOT_EMAIL" \
+    --webroot -w "$WEBROOT" -d "$DOMAIN" -d "$WWW"
 fi
 [ -f "$LIVE" ] || die "sertifikat olinmadi — yuqoridagi certbot xabarini o'qing"
 
