@@ -101,17 +101,43 @@ xizmat faylida `EnvironmentFile` ni shu faylga qarating va:
 sudo systemctl daemon-reload && sudo systemctl restart ilmiz-staging
 ```
 
-### 5. OAuth qaytish manzillari — siz qilasiz
+### 5. OAuth
 
-ORCID va Google konsollarida ruxsat etilgan manzillarga **aynan**
-quyidagilarni qo'shing:
+Qaytish manzillari kodda `ILMIZ_PUBLIC_URL` dan quriladi
+(`auth.redirect_uri`), ya'ni aynan quyidagilar:
 
 ```
 https://ilmiz.uz/api/auth/orcid/callback
 https://ilmiz.uz/api/auth/google/callback
 ```
 
-Bularni men qo'sha olmayman — hisoblar sizniki.
+**Google — bajarildi (02.09.2026).** `journalmaturidi@gmail.com`
+hisobida `IlmIz` (`ilmiz-507405`) loyihasi yaratildi, OAuth ekrani
+sozlandi (External), `IlmIz web (ilmiz.uz)` nomli Web application
+clienti qaytish manzili bilan qo'shildi va ilova **In production**
+holatiga o'tkazildi. Scope'lar `openid email profile` — nosezgir,
+shuning uchun Google tekshiruvi talab qilinmaydi.
+
+`production.env` ga `GOOGLE_CLIENT_ID` va `GOOGLE_CLIENT_SECRET` ni
+o'zingiz kiritasiz — sirlar repoga ham, suhbatga ham tushmaydi.
+
+**ORCID — hal qilinmagan.** Hisobda bitta ilova bor: `Moturidiylik`
+(Client ID `APP-F16HNV4B9YSEF2FU`), u allaqachon uchta saytga xizmat
+qiladi (maturidijournal.org va mijournals.com). ORCID bir hisobda
+faqat bitta ilovaga ruxsat beradi, shuning uchun ilmiz.uz ham shu
+ro'yxatga qo'shilishi kerak edi.
+
+Lekin `developer-tools/update-client.json` **403** qaytaradi —
+sessiyani yangilagandan keyin ham, hatto **hech narsa
+o'zgartirmasdan** saqlashga urinilganda ham. Ya'ni muammo qo'shilayotgan
+manzilda emas: ORCID bu ilovaga umuman tahrir kiritishga yo'l
+qo'ymayapti. Mavjud uchta manzil buzilmadi.
+
+Keyingi qadam — ORCID qo'llab-quvvatlash xizmatiga yozish
+(support@orcid.org), Client ID va 403 xatosini ko'rsatib. Shu
+hal bo'lguncha saytda faqat Google orqali kirish ishlaydi:
+`available_providers()` sozlanmagan provayderni ro'yxatga qo'shmaydi,
+shuning uchun ORCID tugmasi shunchaki ko'rinmaydi.
 
 ### 6. Tekshirish
 
