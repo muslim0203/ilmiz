@@ -21,6 +21,8 @@ export type Route =
   | { kind: "cities" }
   | { kind: "city"; slug: string; page: number }
   | { kind: "about" }
+  | { kind: "privacy" }
+  | { kind: "terms" }
   | { kind: "search"; query: string }
   | { kind: "notFound"; path: string };
 
@@ -45,6 +47,8 @@ export function parseRoute(pathname: string, search: string): Route {
   if (path === "/sohalar") return { kind: "fields" };
   if (path === "/shaharlar") return { kind: "cities" };
   if (path === "/loyiha") return { kind: "about" };
+  if (path === "/maxfiylik") return { kind: "privacy" };
+  if (path === "/shartlar") return { kind: "terms" };
   if (path === "/qidiruv") return { kind: "search", query: params.get("q") ?? "" };
 
   const article = ARTICLE.exec(path);

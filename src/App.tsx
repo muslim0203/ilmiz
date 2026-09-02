@@ -34,6 +34,8 @@ import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
 
 import AboutPage from "@/AboutPage";
+import PrivacyPage from "@/PrivacyPage";
+import TermsPage from "@/TermsPage";
 import AccountPanel from "@/AccountPanel";
 import AdminDashboard from "@/AdminDashboard";
 import ArticlePage from "@/ArticlePage";
@@ -534,6 +536,10 @@ function App() {
           <ArticlePage id={route.id} />
         ) : route.kind === "about" ? (
           <AboutPage stats={platformStats} />
+        ) : route.kind === "privacy" ? (
+          <PrivacyPage />
+        ) : route.kind === "terms" ? (
+          <TermsPage />
         ) : route.kind === "fields" || route.kind === "cities" ? (
           <DirectoryPage kind={route.kind} facets={facets} />
         ) : route.kind === "notFound" ? (
@@ -1043,9 +1049,17 @@ function App() {
           </nav>
         </div>
         <div className={cn(SHELL, "flex flex-col items-center gap-2 border-t py-5 sm:flex-row sm:justify-between")}>
-          <AppLink to="/loyiha" className="text-sm text-muted-foreground hover:text-foreground">
-            Loyiha haqida
-          </AppLink>
+          <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <AppLink to="/loyiha" className="text-sm text-muted-foreground hover:text-foreground">
+              Loyiha haqida
+            </AppLink>
+            <AppLink to="/maxfiylik" className="text-sm text-muted-foreground hover:text-foreground">
+              Maxfiylik
+            </AppLink>
+            <AppLink to="/shartlar" className="text-sm text-muted-foreground hover:text-foreground">
+              Shartlar
+            </AppLink>
+          </nav>
           <span className="text-xs text-muted-foreground">© 2026 IlmIz · MVP 0.1</span>
         </div>
       </footer>

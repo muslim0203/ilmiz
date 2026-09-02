@@ -1160,6 +1160,90 @@ def _about_page(db: Session) -> PageMeta:
     )
 
 
+def _privacy_page() -> PageMeta:
+    """`/maxfiylik` — maxfiylik siyosati.
+
+    Google OAuth ilovasi "Production" holatida shu manzilning ochiq
+    bo'lishini talab qiladi, shuning uchun sahifa crawler'ga ham
+    JavaScript'siz ko'rinishi kerak.
+    """
+    body = (
+        _crumbs([("Bosh sahifa", "/"), ("Maxfiylik siyosati", "/maxfiylik")])
+        + "<h1>Maxfiylik siyosati</h1>"
+        + '<p class="seo-lead">Saytdan foydalanish uchun ro‘yxatdan o‘tish shart emas. '
+        "Quyida qaysi ma’lumot, nima uchun va qancha muddat saqlanishi yozilgan.</p>"
+        + "<h2>Kirmasdan foydalanganda</h2>"
+        + "<p>Qidiruv, jurnal va maqola sahifalari hisobsiz ochiladi; shaxsiy ma’lumot "
+        "saqlanmaydi. Veb-server odatiy texnik jurnal yuritadi — u faqat nosozliklarni "
+        "aniqlash va suiiste’molning oldini olish uchun kerak.</p>"
+        + "<h2>ORCID yoki Google orqali kirganda</h2>"
+        + "<p>Parol so‘ralmaydi va saqlanmaydi. Provayder qaytargan maydonlar saqlanadi: "
+        "provayder nomi va identifikator, ORCID iD, elektron pochta, ko‘rsatiladigan ism, "
+        "ish joyi hamda hisob yaratilgan va oxirgi kirilgan vaqt.</p>"
+        + "<h2>Sessiya va cookie</h2>"
+        + "<p>Bitta <code>ilmiz_session</code> cookie qo‘yiladi: HttpOnly, SameSite=Lax, "
+        "HTTPS’da Secure, muddati 30 kun. Serverda tokenning o‘zi emas, SHA-256 hash’i "
+        "saqlanadi.</p>"
+        + "<h2>Nima qilmaymiz</h2>"
+        + "<ul><li>Reklama ko‘rsatmaymiz</li>"
+        "<li>Kuzatuv va analitika skriptlari ishlatmaymiz</li>"
+        "<li>Ma’lumotlaringizni sotmaymiz</li>"
+        "<li>Parolingizni ko‘rmaymiz va saqlamaymiz</li></ul>"
+        + "<h2>Sizning huquqlaringiz</h2>"
+        + "<p>Chiqish tugmasi sessiyani serverda bekor qiladi; tasdiqlagan maqolalaringizni "
+        "istalgan vaqt olib tashlashingiz mumkin; hisobni butunlay o‘chirishni so‘rasangiz, "
+        "unga bog‘langan barcha yozuvlar bilan o‘chiramiz.</p>"
+        + "<h2>Aloqa</h2>"
+        + '<p><a href="mailto:info@ilmiz.uz">info@ilmiz.uz</a></p>'
+    )
+    return PageMeta(
+        title="Maxfiylik siyosati — IlmIz",
+        description=(
+            "IlmIz qanday ma’lumot saqlaydi: ORCID va Google orqali kirish, sessiya, "
+            "o‘zlashtirilgan maqolalar. Reklama va kuzatuv skriptlari yo‘q."
+        ),
+        path="/maxfiylik",
+        body=body,
+        jsonld=[_breadcrumbs([("Bosh sahifa", "/"), ("Maxfiylik siyosati", "/maxfiylik")])],
+    )
+
+
+def _terms_page() -> PageMeta:
+    """`/shartlar` — foydalanish shartlari."""
+    body = (
+        _crumbs([("Bosh sahifa", "/"), ("Foydalanish shartlari", "/shartlar")])
+        + "<h1>Foydalanish shartlari</h1>"
+        + '<p class="seo-lead">Saytdan foydalanish shu shartlarni qabul qilishni bildiradi.</p>'
+        + "<h2>Xizmat nima</h2>"
+        + "<p>IlmIz — OAK ro‘yxatidagi ilmiy jurnallar va maqolalarning qidiruv indeksi. "
+        "Qidiruv va metama’lumotlar barcha uchun bepul.</p>"
+        + "<h2>Metama’lumot va mualliflik huquqi</h2>"
+        + "<p>To‘liq matnlar saqlanmaydi va tarqatilmaydi — faqat metama’lumot va "
+        "nashriyot sahifasiga havola ko‘rsatiladi. Huquqlar mualliflar va nashriyotlarda "
+        "qoladi. Rasmiy OAK holati uchun birlamchi manba — OAK reestrining o‘zi.</p>"
+        + "<h2>Hisob va maqolalarni o‘zlashtirish</h2>"
+        + "<p>Profilingizga faqat o‘zingiz muallif bo‘lgan maqolalarni qo‘shing. "
+        "Soxta o‘zlashtirish aniqlansa, yozuvlar olib tashlanadi va hisob to‘xtatilishi "
+        "mumkin.</p>"
+        + "<h2>Kafolatlar</h2>"
+        + "<p>Xizmat “borligicha” taqdim etiladi. Rasmiy qarorlar uchun birlamchi "
+        "manbalarga tayaning.</p>"
+        + "<h2>Aloqa</h2>"
+        + '<p><a href="mailto:info@ilmiz.uz">info@ilmiz.uz</a> · '
+        '<a href="/maxfiylik">Maxfiylik siyosati</a></p>'
+    )
+    return PageMeta(
+        title="Foydalanish shartlari — IlmIz",
+        description=(
+            "IlmIz’dan foydalanish shartlari: bepul kirish, metama’lumot manbalari, "
+            "hisob va maqolalarni o‘zlashtirish qoidalari."
+        ),
+        path="/shartlar",
+        body=body,
+        jsonld=[_breadcrumbs([("Bosh sahifa", "/"), ("Foydalanish shartlari", "/shartlar")])],
+    )
+
+
 def _not_found(path: str) -> PageMeta:
     return PageMeta(
         title="Sahifa topilmadi — IlmIz",
@@ -1212,6 +1296,10 @@ def build_page(db: Session, path: str, params: dict[str, str] | None = None) -> 
         return _cities_index(db)
     if path == "/loyiha":
         return _about_page(db)
+    if path == "/maxfiylik":
+        return _privacy_page()
+    if path == "/shartlar":
+        return _terms_page()
     if path == "/qidiruv":
         return _search_page(db, params.get("q", ""))
 

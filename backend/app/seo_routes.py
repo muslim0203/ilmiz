@@ -158,6 +158,8 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
             ("/sohalar", "weekly", "0.8"),
             ("/shaharlar", "weekly", "0.7"),
             ("/loyiha", "monthly", "0.4"),
+            ("/maxfiylik", "yearly", "0.2"),
+            ("/shartlar", "yearly", "0.2"),
         ):
             yield _url(seo.absolute(path), changefreq=freq, priority=priority)
         for name in seo.all_fields():
