@@ -240,6 +240,43 @@ so'rovlar 15-38 ms, API 54-125 ms, uchala sinxronlash trigger'i joyida.
 mahalliy bazada 129 616, serverda 104 809 maqola. Kod endi tayyor,
 lekin importning o'zi alohida ish.
 
+## OpenAlex importi serverda (02.09.2026)
+
+`manage.py openalex <slug> --apply` 51 jurnal uchun ketma-ket ishga
+tushirildi. Uzoq davom etgani uchun `setsid nohup` bilan fonda —
+SSH uzilsa ham to'xtamasin.
+
+- Davomiyligi: **12 daqiqa** (17:59 -> 18:11)
+- Qo'shilgan maqolalar: **25 012** (50 jurnal muvaffaqiyatli)
+- Baza: 104 809 -> **129 907** maqola
+
+FTS indeksi trigger'lar orqali o'zi yangilandi (129 949 yozuv), ya'ni
+alohida qayta qurish kerak bo'lmadi. Foydalanuvchi hisoblari va
+tasdiqlangan maqolalar tegilmadi.
+
+**`manage.py` uchun `logs/` katalogi kerak.** U `PROJECT_ROOT/logs` ga
+yozadi va yo'lni o'zgartirib bo'lmaydi, shuning uchun
+`/opt/ilmiz/app/logs` `ilmiz` egaligida yaratildi.
+
+**Ikkita jurnal tuzatildi.** `fan-sportga` importi «OpenAlex'da
+topilmadi» bilan tugadi, chunki serverdagi ISSN eski edi. Mahalliy
+bazadagi tuzatishlar bilan taqqoslaganda butun `journals` jadvalida
+atigi 3 ta maydon farq qilardi:
+
+| Jurnal | Maydon | Edi | Bo'ldi |
+| --- | --- | --- | --- |
+| fan-sportga (#156) | ISSN | 3030-3087 | 2181-7804 |
+| fan-sportga (#156) | sayt | sport-science.uz | (bo'sh, bosma jurnal) |
+| TTIT (#312) | sayt | tibbiyot-talimi-va-... | tipme.uz/.../ttvit_magazine |
+
+Asoslari `docs/manual-corrections.md` da. Tuzatish `journal_edit.apply_edits`
+orqali qilindi — `manual:` provenance belgisi va completeness qayta
+hisobi shu bilan birga bajariladi. So'ng import takrorlanib, 86 maqola
+qo'shildi.
+
+Qolgan jadvallar (kontaktlar, tahririyat, profillar, completeness)
+mahalliy baza bilan aynan bir xil chiqdi.
+
 ## Diqqat qilinadigan joylar
 
 **Baza almashtirilmasin.** `install_staging.sh` faqat birinchi o'rnatish
