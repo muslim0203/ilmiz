@@ -163,6 +163,22 @@ class SeoRoutesTest(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("<urlset", response.text)
 
+    def test_public_documents_support_head_requests(self) -> None:
+        """Crawler va monitoring vositalari GET qilmasdan URL holatini tekshira olsin."""
+        paths = (
+            "/",
+            "/robots.txt",
+            "/sitemap.xml",
+            "/sitemap-pages.xml",
+            "/sitemap-journals.xml",
+            "/sitemap-articles-1.xml",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                response = self.client.head(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.content, b"")
+
     def test_sitemap_urls_are_absolute_and_resolvable(self) -> None:
         xml = self.client.get("/sitemap-journals.xml").text
         locations = re.findall(r"<loc>([^<]+)</loc>", xml)

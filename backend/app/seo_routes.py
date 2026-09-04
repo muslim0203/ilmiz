@@ -64,6 +64,7 @@ def _iso(value: datetime | None) -> str:
 # --------------------------------------------------------------- robots.txt
 
 
+@router.head("/robots.txt")
 @router.get("/robots.txt")
 def robots() -> PlainTextResponse:
     base = seo.site_url()
@@ -131,6 +132,7 @@ def _article_chunks(db: Session) -> int:
     return max(1, -(-total // SITEMAP_CHUNK))
 
 
+@router.head("/sitemap.xml")
 @router.get("/sitemap.xml")
 def sitemap_index(db: Session = Depends(get_db)) -> Response:
     base = seo.site_url()
@@ -147,6 +149,7 @@ def sitemap_index(db: Session = Depends(get_db)) -> Response:
     return Response(xml, media_type=_XML, headers={"Cache-Control": "public, max-age=3600"})
 
 
+@router.head("/sitemap-pages.xml")
 @router.get("/sitemap-pages.xml")
 def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
     def rows() -> Iterator[str]:
@@ -175,6 +178,7 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
     return _stream(rows())
 
 
+@router.head("/sitemap-journals.xml")
 @router.get("/sitemap-journals.xml")
 def sitemap_journals(db: Session = Depends(get_db)) -> StreamingResponse:
     def rows() -> Iterator[str]:
@@ -196,6 +200,7 @@ def sitemap_journals(db: Session = Depends(get_db)) -> StreamingResponse:
     return _stream(rows())
 
 
+@router.head("/sitemap-articles-{index}.xml")
 @router.get("/sitemap-articles-{index}.xml")
 def sitemap_articles(index: int, db: Session = Depends(get_db)) -> Response:
     chunks = _article_chunks(db)
@@ -224,6 +229,7 @@ def sitemap_articles(index: int, db: Session = Depends(get_db)) -> Response:
 # ------------------------------------------------------- IndexNow va tasdiqlash
 
 
+@router.head("/{key}.txt")
 @router.get("/{key}.txt")
 def indexnow_key(key: str) -> Response:
     """IndexNow kalitini o'z faylida qaytaradi (Yandex, Bing, Seznam)."""
@@ -273,6 +279,7 @@ def page_metadata(response: Response, path: str = Query(max_length=2048), db: Se
     return {"head": seo.render_head(meta), "body": meta.body, "status": meta.status, "path": meta.path}
 
 
+@router.head("/{full_path:path}")
 @router.get("/{full_path:path}")
 def shell(full_path: str, request: Request, db: Session = Depends(get_db)) -> Response:
     path = "/" + full_path
