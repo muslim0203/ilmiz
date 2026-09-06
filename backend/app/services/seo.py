@@ -25,6 +25,8 @@ from ..models import Article, Journal, OakRegistryEntry
 from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
 from .translit import alternate_names
+from .citations import citation_formats
+from . import search_index
 
 SITE_NAME = "IlmIz"
 SITE_TAGLINE = "O‘zbekiston OAK jurnallari va ilmiy maqolalar indeksi"
@@ -486,6 +488,65 @@ def _site_jsonld() -> list[dict]:
 
 # ---------------------------------------------------------------- sahifalar
 
+CITATION_LABELS = {
+    "apa": "APA", "gost": "GOST (OAK)", "mla": "MLA", "chicago": "Chicago", "harvard": "Harvard", "bibtex": "BibTeX",
+}
+
+
+def _recently_added(db: Session, limit: int = 12) -> tuple[str | None, list[Journal]]:
+    """OAK ro'yxatiga eng so'nggi yilda qo'shilgan milliy jurnallar.
+
+    «OAK ro'yxatiga qo'shilgan jurnallar 2025» — tez-tez so'raladigan so'rov;
+    reestr yozuvlari (`status = Қўшилди`) shuni to'g'ridan-to'g'ri beradi.
+    """
+    def produce() -> tuple[str | None, list[int]]:
+        latest = db.scalar(
+            select(func.max(OakRegistryEntry.year)).where(
+                OakRegistryEntry.status == "Қўшилди", OakRegistryEntry.journal_id.is_not(None)
+            )
+        )
+        if not latest:
+            return None, []
+        ids = [
+            row[0] for row in db.execute(
+                select(OakRegistryEntry.journal_id)
+                .where(OakRegistryEntry.status == "Қўшилди", OakRegistryEntry.year == latest,
+                       OakRegistryEntry.journal_id.is_not(None))
+                .group_by(OakRegistryEntry.journal_id)
+                .order_by(func.max(OakRegistryEntry.id).desc())
+                .limit(limit)
+            )
+        ]
+        return str(latest), ids
+
+    year, ids = _cached("recently_added", produce)
+    if not ids:
+        return year, []
+    journals = db.scalars(select(Journal).where(Journal.id.in_(ids))).all()
+    order = {journal_id: index for index, journal_id in enumerate(ids)}
+    journals.sort(key=lambda item: order.get(item.id, 999))
+    return year, journals
+
+
+def _latest_harvest(db: Session) -> datetime | None:
+    return _cached("latest_harvest", lambda: db.scalar(select(func.max(Article.harvested_at))))
+
+
+def _faq_jsonld(items: list[tuple[str, str]]) -> dict:
+    return {
+        "@type": "FAQPage",
+        "mainEntity": [
+            {"@type": "Question", "name": question,
+             "acceptedAnswer": {"@type": "Answer", "text": answer}}
+            for question, answer in items
+        ],
+    }
+
+
+def _faq_html(items: list[tuple[str, str]]) -> str:
+    return "".join(f"<h3>{e(q)}</h3><p>{e(a)}</p>" for q, a in items)
+
+
 def _home(db: Session) -> PageMeta:
     journals, articles = _stats(db)
     counts = _counts(db)
@@ -500,36 +561,99 @@ def _home(db: Session) -> PageMeta:
         .order_by(Article.publication_year.desc(), Article.id.desc())
         .limit(12)
     ).all()
+    added_year, added = _recently_added(db)
+    harvested = _latest_harvest(db)
+    # 24 soha + ~40 shahar uchun jurnal sanoqlari — har so'rovda 250 ms olardi.
+    def produce_field_counts() -> list[tuple[str, int]]:
+        rows = [(name, len(_journal_ids_for(db, field=name) or set())) for name in all_fields()]
+        return sorted(rows, key=lambda item: -item[1])
+
+    def produce_city_counts() -> list[tuple[str, int]]:
+        rows = [(name, len(_journal_ids_for(db, city=name) or set())) for name in cities(db)]
+        return sorted(rows, key=lambda item: -item[1])
+
+    field_counts = _cached("home_field_counts", produce_field_counts)
+    cities_ranked = _cached("home_city_counts", produce_city_counts)
+
+    faq = [
+        ("OAK jurnallari ro‘yxati nima?",
+         "Bu O‘zbekiston Respublikasi Vazirlar Mahkamasi huzuridagi Oliy attestatsiya komissiyasi (OAK) "
+         "tasdiqlagan ilmiy nashrlar ro‘yxati. PhD va DSc dissertatsiyalarining asosiy natijalari aynan shu "
+         "ro‘yxatdagi jurnallarda chop etilishi talab qilinadi. IlmIz rasmiy reestrdagi barcha "
+         f"{journals} ta jurnalni ixtisoslik kodi, qaror raqami va sanasi bilan ko‘rsatadi."),
+        ("Jurnal OAK ro‘yxatida ekanini qanday tekshiraman?",
+         "Jurnal nomi yoki ISSN raqamini qidiruvga yozing. Jurnal sahifasida OAK holati, ixtisoslik kodi, "
+         "qaror raqami, qo‘shilgan sanasi va rasmiy sayt havolasi ko‘rsatiladi; ro‘yxatdan chiqarilgan "
+         "jurnallar alohida belgilanadi."),
+        ("Maqolalar qayerdan olinadi?",
+         "Jurnallarning o‘z saytlaridagi OAI-PMH repozitoriylaridan (asosan OJS) va OpenAlex bazasidan "
+         "avtomatik yig‘iladi, har kuni yangilanadi. Har bir maqolada asl manba, DOI va PDF havolasi qoladi; "
+         "IlmIz maqola matnini o‘zida saqlamaydi."),
+        ("Maqolaga iqtibosni qanday olaman?",
+         "Har bir maqola sahifasida APA, GOST (OAK talabi), MLA, Chicago, Harvard va BibTeX formatlaridagi "
+         "tayyor iqtibos bor — nusxalab dissertatsiya yoki maqolaga qo‘yish mumkin."),
+        ("Ilmiy soha yoki shahar bo‘yicha jurnallarni qanday topaman?",
+         "«Ilmiy sohalar» bo‘limida 24 ta OAK sohasi, «Shaharlar» bo‘limida esa nashriyot joylashgan "
+         "shaharlar bo‘yicha jurnallar ro‘yxati bor. Har bir soha va shahar sahifasi alohida manzilga ega."),
+    ]
 
     body = (
         f'<h1>{e(SITE_TAGLINE)}</h1>'
         f'<p class="seo-lead">O‘zbekiston Oliy attestatsiya komissiyasi ro‘yxatidagi '
         f'<strong>{journals}</strong> ta ilmiy jurnal va ular chop etgan '
         f'<strong>{articles}</strong> ta maqolaning ochiq, bepul indeksi. Sarlavha, muallif, '
-        f'kalit so‘z, ISSN, ilmiy soha va shahar bo‘yicha qidiring; APA, MLA, Chicago, '
+        f'kalit so‘z, ISSN, ilmiy soha va shahar bo‘yicha qidiring; APA, GOST, MLA, Chicago, '
         f'Harvard va BibTeX iqtiboslarini bir bosishda oling.</p>'
         f'<p><a href="/jurnallar">Barcha OAK jurnallari</a> · '
         f'<a href="/maqolalar">Barcha maqolalar</a> · '
+        f'<a href="/yangi-maqolalar">Yangi maqolalar</a> · '
         f'<a href="/sohalar">Ilmiy sohalar</a> · '
-        f'<a href="/shaharlar">Shaharlar</a></p>'
+        f'<a href="/shaharlar">Shaharlar</a> · '
+        f'<a href="/loyiha">Loyiha haqida</a></p>'
+        f'<table class="seo-facts"><caption>Indeks holati</caption><tbody>'
+        f'<tr><th>OAK jurnallari</th><td>{journals}</td></tr>'
+        f'<tr><th>Maqolalar</th><td>{articles}</td></tr>'
+        f'<tr><th>Ilmiy sohalar</th><td>{len(all_fields())}</td></tr>'
+        f'<tr><th>Shaharlar</th><td>{len(cities_ranked)}</td></tr>'
+        + (f'<tr><th>So‘nggi yangilanish</th><td>{e(harvested.date().isoformat())}</td></tr>' if harvested else "")
+        + '</tbody></table>'
         f'<h2>Eng ko‘p maqolali OAK jurnallari</h2>'
         f'<ul class="seo-list">{"".join(_journal_item(item, counts.get(item.id, 0)) for item in top[:24])}</ul>'
+    )
+    if added:
+        body += (
+            f'<h2>OAK ro‘yxatiga {e(added_year)}-yilda qo‘shilgan jurnallar</h2>'
+            f'<p>Rasmiy reestrda «qo‘shildi» belgisi bilan turgan eng so‘nggi milliy jurnallar. '
+            f'To‘liq ro‘yxat va qaror raqamlari har bir jurnal sahifasida.</p>'
+            f'<ul class="seo-list">{"".join(_journal_item(item, counts.get(item.id, 0)) for item in added)}</ul>'
+        )
+    body += (
         f'<h2>So‘nggi qo‘shilgan maqolalar</h2>'
         f'<ul class="seo-list">{"".join(_article_item(item) for item in latest)}</ul>'
         f'<h2>Ilmiy sohalar bo‘yicha</h2>'
-        + _chips([(name, field_path(name)) for name in all_fields()])
+        + _chips([(f"{name} ({count})" if count else name, field_path(name)) for name, count in field_counts])
         + '<h2>Shaharlar bo‘yicha</h2>'
-        + _chips([(name, city_path(name)) for name in cities(db)])
+        + _chips([(f"{name} ({count})" if count else name, city_path(name)) for name, count in cities_ranked])
+        + '<h2>IlmIz qanday ishlaydi</h2>'
+        '<p>IlmIz — O‘zbekiston ilmiy jurnallari uchun ochiq bibliografik indeks. Jurnallar ro‘yxati OAK '
+        'rasmiy elektron reestridan olinadi va har bir jurnal uchun ixtisoslik kodi, qaror raqami va sanasi '
+        'saqlanadi. Maqolalar jurnal saytlarining OAI-PMH repozitoriylaridan va OpenAlex bazasidan avtomatik '
+        'yig‘iladi: sarlavha, mualliflar, annotatsiya, kalit so‘zlar, jild, son, betlar va DOI. Matn '
+        'saqlanmaydi — har maqola asl sahifasi va PDF’iga yo‘naltiradi. Qidiruv kirill va lotin yozuvini '
+        'farqlamaydi: «Сулайманова» ham, «Sulaymanova» ham bir xil natija beradi.</p>'
+        '<h2>Ko‘p so‘raladigan savollar</h2>'
+        + _faq_html(faq)
     )
     return PageMeta(
         title=f"{SITE_NAME} — {SITE_TAGLINE}",
         description=(
             f"O‘zbekiston OAK ro‘yxatidagi {journals} ta ilmiy jurnal va {articles} ta "
-            "maqolaning ochiq indeksi. Muallif, kalit so‘z, ISSN va soha bo‘yicha qidiring, "
-            "tayyor iqtibos oling."
+            "maqolaning ochiq indeksi. Jurnalning OAK holati, ixtisoslik kodi va ISSN; muallif, kalit so‘z "
+            "va soha bo‘yicha qidiruv; APA va GOST iqtibos."
         ),
         path="/",
         body=body,
+        modified_time=harvested.isoformat() if harvested else None,
         jsonld=_site_jsonld() + [
             {
                 "@type": "CollectionPage",
@@ -538,7 +662,9 @@ def _home(db: Session) -> PageMeta:
                 "name": f"{SITE_NAME} — {SITE_TAGLINE}",
                 "isPartOf": {"@id": absolute("/#website")},
                 "inLanguage": DEFAULT_LANG,
-            }
+                "mainEntity": _item_list("Eng ko‘p maqolali OAK jurnallari", [(item.name, journal_path(item.slug)) for item in top[:24]]),
+            },
+            _faq_jsonld(faq),
         ],
     )
 
@@ -1106,25 +1232,43 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     abstract = (article.abstract or "").strip()
     keywords = article.keywords or []
 
-    title = f"{article.title} — {SITE_NAME}"
-    description = clip(
-        abstract or f"{', '.join(authors)} — {journal.name if journal else ''} ({year or ''})", 158
-    )
+    # Sarlavha to'liq (so'rov aynan shu), keyin jurnal va yil — sayt nomi emas:
+    # brend `og:site_name` da, <title> dagi har belgi esa relevantlik.
+    journal_tail = f" — {journal.name}" + (f", {year}" if year else "") if journal else ""
+    title = (article.title if len(article.title) <= 120 else clip(article.title, 120)) + journal_tail
+    if not abstract:
+        bits = [", ".join(authors[:4]) + (" va b." if len(authors) > 4 else "")] if authors else []
+        if journal:
+            bits.append(f"{journal.name}" + (f" ({year})" if year else "") + " jurnalida chop etilgan ilmiy maqola")
+        location = ", ".join(part for part in [f"jild {article.volume}" if article.volume else "", f"{article.issue}-son" if article.issue else "", f"{article.pages}-betlar" if article.pages else ""] if part)
+        if location:
+            bits.append(location)
+        if keywords:
+            bits.append("Kalit so‘zlar: " + ", ".join(keywords[:6]))
+        description = clip(". ".join(bit for bit in bits if bit) + ".", 158)
+    else:
+        description = clip(abstract, 158)
 
     crumbs = [("Bosh sahifa", "/"), ("Maqolalar", "/maqolalar")]
     if journal:
         crumbs.append((clip(journal.name, 50), journal_path(journal.slug)))
+        if year:
+            crumbs.append((f"{year}", journal_year_path(journal.slug, year)))
     crumbs.append((clip(article.title, 60), canonical_path))
 
     facts = [
         ("Mualliflar", ", ".join(authors)),
         ("Jurnal", journal.name if journal else None),
+        ("Nashriyot", journal.publisher if journal else None),
+        ("ISSN", ", ".join(item for item in ((journal.issn, journal.eissn) if journal else ()) if item)),
         ("Nashr sanasi", when or (str(year) if year else None)),
         ("Jild", article.volume),
         ("Son", article.issue),
         ("Betlar", article.pages),
         ("Til", article.language),
+        ("Ilmiy soha", ", ".join(article.fields or [])),
         ("DOI", article.doi),
+        ("Indeksga qo‘shilgan", article.harvested_at.date().isoformat() if article.harvested_at else None),
     ]
     facts_html = "".join(
         f"<tr><th>{e(label)}</th><td>{e(value)}</td></tr>" for label, value in facts if value
@@ -1163,26 +1307,73 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         parts.append("<h2>Ilmiy soha</h2>")
         parts.append(_chips([(name, field_path(name)) for name in article.fields]))
 
+    # Iqtibos formatlari — matn sifatida: dissertatsiya yozuvchilar aynan
+    # «maqola iqtibos GOST» deb qidiradi; frontend ham shu formatlarni beradi.
+    if journal:
+        formats = citation_formats(article)
+        parts.append("<h2>Iqtibos keltirish</h2>")
+        rows_html = "".join(
+            f"<tr><th>{e(CITATION_LABELS.get(key, key.upper()))}</th><td>"
+            + (f"<pre>{e(value)}</pre>" if key == "bibtex" else e(value))
+            + "</td></tr>"
+            for key, value in formats.items()
+        )
+        parts.append(f'<table class="seo-facts seo-cite"><tbody>{rows_html}</tbody></table>')
+
     # Qo'shni maqolalarga havola — 104 809 ta yozuvning aksari sitemap'dan
     # tashqari hech qayerdan bog'lanmagan bo'lardi, ya'ni orfan sahifa.
+    # Ikki tomonlama 5 tadan: `abs(id - x)` bo'yicha saralash katta jurnalda
+    # (15 ming maqola) butun ro'yxatni saralardi.
     if journal:
-        siblings = db.scalars(
+        base_query = (
             select(Article)
             .options(selectinload(Article.journal))
-            .where(
-                Article.journal_id == journal.id,
-                Article.is_deleted.is_(False),
-                Article.id != article.id,
-            )
-            .order_by(func.abs(Article.id - article.id))
-            .limit(10)
-        ).all()
+            .where(Article.journal_id == journal.id, Article.is_deleted.is_(False))
+        )
+        before = db.scalars(base_query.where(Article.id < article.id).order_by(Article.id.desc()).limit(5)).all()
+        after = db.scalars(base_query.where(Article.id > article.id).order_by(Article.id.asc()).limit(5)).all()
+        siblings = list(reversed(before)) + after
         if siblings:
             parts.append(f"<h2>{e(journal.name)} jurnalidan boshqa maqolalar</h2>")
             parts.append(f'<ul class="seo-list">{"".join(_article_item(item) for item in siblings)}</ul>')
         parts.append(
-            f'<p><a href="{e(journal_path(journal.slug))}">{e(journal.name)} — barcha maqolalar</a></p>'
+            f'<p><a href="{e(journal_path(journal.slug))}">{e(journal.name)} — barcha maqolalar</a>'
+            + (f' · <a href="{e(journal_year_path(journal.slug, year))}">{year}-yil arxivi</a>' if year else "")
+            + "</p>"
         )
+
+    # Muallifning boshqa maqolalari — FTS indeksi bo'lsa (prodda bor).
+    # Muallif nomi kirill/lotin farqisiz normallashtirilgan `search_text`da.
+    if authors and search_index.available(db):
+        expression = search_index.match_expression(authors[0])
+        if expression:
+            by_author = db.scalars(
+                search_index.apply(
+                    select(Article).options(selectinload(Article.journal))
+                    .where(Article.is_deleted.is_(False), Article.id != article.id),
+                    expression,
+                ).limit(6)
+            ).all()
+            if by_author:
+                parts.append(f"<h2>{e(authors[0])} — boshqa maqolalari</h2>")
+                parts.append(f'<ul class="seo-list">{"".join(_article_item(item) for item in by_author)}</ul>')
+
+    # Shu sohadagi boshqa jurnallarning so'nggi maqolalari — soha bo'yicha
+    # bog'lanish, orfanlikni kamaytiradi.
+    if article.fields:
+        field_ids = _journal_ids_for(db, field=article.fields[0]) or set()
+        field_ids.discard(journal.id if journal else -1)
+        if field_ids:
+            related = db.scalars(
+                select(Article).options(selectinload(Article.journal))
+                .where(Article.journal_id.in_(field_ids), Article.is_deleted.is_(False))
+                .order_by(Article.publication_year.desc(), Article.id.desc())
+                .limit(6)
+            ).all()
+            if related:
+                parts.append(f"<h2>{e(article.fields[0])} sohasidagi boshqa maqolalar</h2>")
+                parts.append(f'<ul class="seo-list">{"".join(_article_item(item) for item in related)}</ul>')
+                parts.append(f'<p><a href="{e(field_path(article.fields[0]))}">{e(article.fields[0])} sohasidagi OAK jurnallari</a></p>')
 
     scholarly: dict[str, object] = {
         "@type": "ScholarlyArticle",
@@ -1192,8 +1383,11 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         "name": article.title,
         "inLanguage": lang,
         "isAccessibleForFree": True,
+        "mainEntityOfPage": absolute(canonical_path),
         "author": [{"@type": "Person", "name": name} for name in authors] or None,
     }
+    if article.updated_at:
+        scholarly["dateModified"] = article.updated_at.date().isoformat()
     if abstract:
         scholarly["abstract"] = clip(abstract, 5000)
         scholarly["description"] = clip(abstract, 300)
@@ -1202,7 +1396,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     elif year:
         scholarly["datePublished"] = str(year)
     if keywords:
-        scholarly["keywords"] = ", ".join(keywords)
+        scholarly["keywords"] = keywords
     if article.fields:
         scholarly["about"] = [{"@type": "Thing", "name": name} for name in article.fields]
     if article.pages:
@@ -1215,6 +1409,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     if journal:
         periodical = {
             "@type": "Periodical",
+            "@id": absolute(journal_path(journal.slug)) + "#periodical",
             "name": journal.name,
             "url": absolute(journal_path(journal.slug)),
         }
@@ -1227,7 +1422,8 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         if article.issue and article.issue != "—":
             container = {"@type": "PublicationIssue", "issueNumber": article.issue, "isPartOf": container}
         scholarly["isPartOf"] = container
-        scholarly["publisher"] = {"@type": "Organization", "name": journal.publisher}
+        publisher_site = web_url(journal.website)
+        scholarly["publisher"] = {"@type": "Organization", "name": journal.publisher, **({"url": publisher_site} if publisher_site else {})}
     scholarly = {key: value for key, value in scholarly.items() if value is not None}
 
     # Google Scholar va akademik indekslar aynan shu prefiksni o'qiydi.
@@ -1284,6 +1480,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         modified_time=article.updated_at.isoformat() if article.updated_at else None,
         jsonld=[scholarly, _breadcrumbs(crumbs)],
         head=head,
+        lang=lang,
     )
 
 
@@ -1616,6 +1813,8 @@ font:400 16px/1.65 ui-sans-serif,system-ui,'Segoe UI',sans-serif;color:#18181b}
 #root .seo-registry th{width:auto;white-space:normal}
 #root .seo-registry td{padding-right:.6rem;font-size:.85rem}
 #root .seo-shell h3{font-size:1rem;margin:1.1rem 0 .3rem}
+#root .seo-cite th{width:7rem}
+#root .seo-cite pre{white-space:pre-wrap;font-size:.8rem;margin:0}
 #root .seo-crumbs{font-size:.8rem;opacity:.7;margin-bottom:1rem}
 #root .seo-sep{margin:0 .4rem;opacity:.5}
 #root .seo-list{list-style:none;margin:0;padding:0}

@@ -77,6 +77,6 @@ export type Article = {
   pdfUrl?: string | null;
   harvestedAt: string;
   landingUrl?: string | null;
-  citations?: Record<"apa" | "mla" | "chicago" | "harvard" | "bibtex", string>;
+  citations?: Record<"apa" | "gost" | "mla" | "chicago" | "harvard" | "bibtex", string>;
   isDemo?: boolean;
 };
