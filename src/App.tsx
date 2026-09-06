@@ -340,20 +340,29 @@ function App() {
       return;
     }
     skipFirstSearch.current = false;
+    // Debounce faqat taymerni bekor qiladi, yuborilgan so‘rovni emas: "a"
+    // so‘rovi "ab" dan keyin qaytsa, eski natija yangisini ustidan yozardi.
+    // `active` bayrog‘i eskirgan javobni tashlab yuboradi.
+    let active = true;
     const timer = window.setTimeout(() => {
       const request =
         view === "articles"
           ? searchArticles(query, selectedFields, activeCities).then((page) => {
+              if (!active) return;
               setCatalogArticles(page.items);
               setArticleTotal(page.total);
             })
           : searchJournals(query, selectedFields, activeCities, 0, oaiOnly).then((page) => {
+              if (!active) return;
               setCatalogJournals(page.items);
               setJournalTotal(page.total);
             });
       void request.catch(() => undefined);
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [activeCities, apiState, oaiOnly, query, selectedFields, view]);
 
   const loadMore = () => {

@@ -2,6 +2,7 @@ import hashlib
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 database_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 database_file.close()
@@ -94,6 +95,82 @@ class AuthTest(unittest.TestCase):
             self.assertIsNotNone(db.scalar(select(OAuthState).where(OAuthState.state == state)))
             auth_service.consume_state(db, "orcid", state)
             self.assertIsNone(db.scalar(select(OAuthState).where(OAuthState.state == state)))
+
+    def test_expired_state_is_rejected(self) -> None:
+        with SessionLocal() as db:
+            state = auth_service.create_state(db, "orcid", "/jurnallar")
+            row = db.scalar(select(OAuthState).where(OAuthState.state == state))
+            row.created_at = row.created_at - auth_service.STATE_TTL * 2
+            db.commit()
+            with self.assertRaises(LookupError):
+                auth_service.consume_state(db, "orcid", state)
+            self.assertIsNone(db.scalar(select(OAuthState).where(OAuthState.state == state)))
+
+    # --- redirect_to -----------------------------------------------------
+
+    def test_safe_redirect_keeps_only_own_site(self) -> None:
+        """Ochiq yo'naltirish: begona manzil bosh sahifaga almashadi."""
+        self.configure()
+        self.assertEqual(auth_service.safe_redirect("/jurnal/fardu?x=1"), "/jurnal/fardu?x=1")
+        self.assertEqual(
+            auth_service.safe_redirect("http://127.0.0.1:5173/maqola/7-x"),
+            "http://127.0.0.1:5173/maqola/7-x",
+        )
+        for bad in (
+            "https://evil.example/",
+            "//evil.example/",
+            "/\\evil.example",
+            "http://127.0.0.1:5173.evil.example/",
+            "javascript:alert(1)",
+            "/ok\r\nSet-Cookie: x=1",
+            "/" + "a" * 3000,
+            "",
+            None,
+        ):
+            self.assertIsNone(auth_service.safe_redirect(bad), bad)
+
+    def test_start_stores_sanitized_redirect(self) -> None:
+        self.configure()
+        response = self.client.get(
+            "/api/auth/orcid/start",
+            params={"redirect_to": "https://evil.example/phish"},
+            follow_redirects=False,
+        )
+        self.assertEqual(response.status_code, 307)
+        with SessionLocal() as db:
+            rows = list(db.scalars(select(OAuthState).where(OAuthState.provider == "orcid")))
+            self.assertTrue(rows)
+            self.assertTrue(all(row.redirect_to is None for row in rows if row.redirect_to is not None and "evil" in row.redirect_to))
+            self.assertIsNone(rows[-1].redirect_to)
+
+    def _login(self, redirect_to: str | None):
+        self.configure()
+        with SessionLocal() as db:
+            state = auth_service.create_state(db, "orcid", redirect_to)
+        identity = auth_service.ProviderIdentity(subject="0000-0001-2345-6789", display_name="Test", orcid="0000-0001-2345-6789")
+        with patch.object(auth_service, "exchange_code", return_value=identity):
+            return self.client.get(
+                "/api/auth/orcid/callback",
+                params={"code": "abc", "state": state},
+                follow_redirects=False,
+            )
+
+    def test_callback_without_redirect_to_succeeds(self) -> None:
+        """Ilgari `redirect_to`siz boshlangan kirish har doim 400 bilan yiqilardi."""
+        response = self._login(None)
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "http://127.0.0.1:5173/")
+        self.assertIn(auth_service.SESSION_COOKIE, response.cookies)
+
+    def test_callback_returns_to_requested_page(self) -> None:
+        response = self._login("/jurnal/fardu")
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "/jurnal/fardu")
+
+    def test_callback_ignores_foreign_redirect_stored_in_db(self) -> None:
+        response = self._login("https://evil.example/")
+        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["location"], "http://127.0.0.1:5173/")
 
     def test_callback_rejects_unknown_state(self) -> None:
         self.configure()

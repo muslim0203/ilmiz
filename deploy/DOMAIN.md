@@ -277,6 +277,53 @@ qo'shildi.
 Qolgan jadvallar (kontaktlar, tahririyat, profillar, completeness)
 mahalliy baza bilan aynan bir xil chiqdi.
 
+## Serverni yangilash skripti (06.09.2026 dan)
+
+Qo'lda fayl nusxalash o'rniga `deploy/update_app.sh`: checksum, alohida
+katalogda testlar, WAL-xavfsiz baza zaxirasi (`/var/backups/ilmiz/`),
+xizmatni to'xtatib kodni almashtirish, health tekshiruvi; o'tmasa eski kod
+o'zi qaytadi. Har release uchun yangi nom kerak.
+
+```powershell
+npm run build
+.\.venv\Scripts\python.exe deploy\package_runtime.py .deploy-artifacts\<nom>
+scp .deploy-artifacts\<nom>\runtime.tar.gz .deploy-artifacts\<nom>\SHA256SUMS deploy\update_app.sh ubuntu@51.79.165.112:/home/ubuntu/ilmiz-<nom>/
+```
+
+```bash
+sudo bash /home/ubuntu/ilmiz-<nom>/update_app.sh /home/ubuntu/ilmiz-<nom> <nom>
+```
+
+Birinchi marta `harvest-20260906` nomi bilan bajarildi: 318 test serverda
+o'tdi, zaxira `/var/backups/ilmiz/before-harvest-20260906.db`, eski kod
+`/opt/ilmiz/app-before-harvest-20260906`.
+
+## Harvest jadvali (timer)
+
+2026-09-06 gacha serverda OAI-PMH harvest umuman avtomatik ishlamagan:
+cron ham, timer ham yo'q edi, baza 31-avgustdagi nusxa + OpenAlex importi.
+Endi `deploy/` da to'rtta systemd unit bor:
+
+| Unit | Vaqti | Nima qiladi |
+| --- | --- | --- |
+| `ilmiz-harvest.timer` | har kuni 03:00 UTC | `harvest-all --workers 3` (inkremental) |
+| `ilmiz-harvest-retry.timer` | yakshanba 14:00 UTC | `harvest-all --retry-failed --ignore-backoff` |
+
+O'rnatish (kod `/opt/ilmiz/app` ga yangilangandan keyin, bir marta):
+
+```bash
+sudo bash /opt/ilmiz/app/deploy/install_harvest_timer.sh
+sudo systemctl start ilmiz-harvest.service      # birinchi yurgizish, kutmasdan
+sudo journalctl -fu ilmiz-harvest.service
+```
+
+Loglar `/var/lib/ilmiz/logs/ilmiz.log` da (`ILMIZ_LOG_DIR`); kod katalogi
+faqat o'qiladi. `manage.py` ni qo'lda ishga tushirganda
+`ILMIZ_ENV_FILE=/etc/ilmiz/staging.env` bering — usiz `DATABASE_URL`
+bo'lmaydi va u joriy katalogda yangi bo'sh baza yaratadi. Hech qachon
+root sifatida yurgizmang: `-wal`/`-shm` fayllar root egaligida qolib,
+xizmat bazaga yozolmay qoladi.
+
 ## Diqqat qilinadigan joylar
 
 **Baza almashtirilmasin.** `install_staging.sh` faqat birinchi o'rnatish

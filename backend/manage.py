@@ -12,6 +12,42 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+
+def load_env_file(path: Path) -> int:
+    """`KEY=VALUE` qatorlarini muhitga yuklaydi (mavjudlarini o‘zgartirmaydi).
+
+    Serverda sozlamalar `/etc/ilmiz/staging.env` da turadi va ularni
+    xizmat `EnvironmentFile` bilan oladi. `manage.py` esa qo‘lda ishga
+    tushiriladi: `DATABASE_URL` eksport qilinmasa u `sqlite:///./ilmiz.db`
+    ga, ya’ni joriy katalogdagi yangi bo‘sh bazaga yozib, uni demo
+    yozuvlar bilan to‘ldirardi. `ILMIZ_ENV_FILE=/etc/ilmiz/staging.env`
+    shu tuzoqni yopadi. Tashqi kutubxonasiz, chunki `python-dotenv`
+    `backend/requirements.txt` da yo‘q.
+    """
+    loaded = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded += 1
+    return loaded
+
+
+# Bazaga ulanish `DATABASE_URL` ni import paytida o‘qiydi, shuning uchun
+# env fayl `backend.app.db` dan OLDIN yuklanishi shart.
+_ENV_FILE = os.getenv("ILMIZ_ENV_FILE")
+if _ENV_FILE:
+    load_env_file(Path(_ENV_FILE))
+
 from sqlalchemy import select
 
 from backend.app.db import SessionLocal, init_db
@@ -36,16 +72,27 @@ from backend.app.services.tadqiq_import import import_tadqiq
 from backend.app.services.profile_queue import enqueue_profiles, process_profile_jobs, requeue_failed_profiles, requeue_incomplete_profiles
 
 
-def configure_logging() -> Path:
-    """Xatolar konsolga ham, `logs/ilmiz.log` ga ham yozilsin.
+def configure_logging() -> Path | None:
+    """Xatolar konsolga ham, log fayliga ham yozilsin.
 
     Ilgari harvest xatolari hech qayerda saqlanmagani uchun yiqilgan
     manbaning sababini aniqlab bo‘lmasdi.
+
+    Katalog `ILMIZ_LOG_DIR` bilan sozlanadi (standart `logs/`). Serverda
+    kod `/opt/ilmiz/app` da root egaligida va faqat o‘qiladi — u yerda
+    `logs/` yaratib bo‘lmagani uchun buyruq boshlanmasdan `PermissionError`
+    bilan yiqilardi. Endi fayl ochilmasa faqat konsolga yozamiz va `None`
+    qaytaramiz.
     """
-    log_dir = PROJECT_ROOT / "logs"
-    log_dir.mkdir(exist_ok=True)
-    log_path = log_dir / "ilmiz.log"
-    handlers: list[logging.Handler] = [logging.FileHandler(log_path, encoding="utf-8")]
+    log_dir = Path(os.getenv("ILMIZ_LOG_DIR") or PROJECT_ROOT / "logs")
+    log_path: Path | None = log_dir / "ilmiz.log"
+    handlers: list[logging.Handler] = []
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+    except OSError as error:
+        print(f"ogohlantirish: log fayli ochilmadi ({error}); faqat konsolga yoziladi", file=sys.stderr)
+        log_path = None
     stream = logging.StreamHandler()
     stream.setLevel(logging.WARNING)
     handlers.append(stream)
@@ -122,8 +169,16 @@ def main() -> int:
     harvest.add_argument("base_url")
     harvest.add_argument("--from-date")
     harvest.add_argument("--page-limit", type=int)
-    harvest_all = subparsers.add_parser("harvest-all")
-    harvest_all.add_argument("--from-date")
+    harvest_all = subparsers.add_parser(
+        "harvest-all",
+        help="Barcha faol OAI manbalarni yangilash (standart: har manba o‘z oxirgi muvaffaqiyatidan boshlab)",
+    )
+    harvest_all.add_argument("--from-date", help="Hamma manba uchun bitta boshlang‘ich sana (YYYY-MM-DD)")
+    harvest_all.add_argument("--full", action="store_true", help="To‘liq tarixni qayta tortish (inkremental emas)")
+    harvest_all.add_argument("--retry-failed", action="store_true",
+                             help="Ilgari ishlagan `failed` manbalarni qayta audit qilib, o‘tganlarini harvest qilish")
+    harvest_all.add_argument("--ignore-backoff", action="store_true",
+                             help="`degraded` manbalarni kutish oralig‘iga qaramay urinish")
     harvest_all.add_argument("--page-limit", type=int)
     harvest_all.add_argument("--workers", type=int, default=3)
     harvest_all.add_argument("--source-id", action="append", type=int, dest="source_ids")
@@ -157,6 +212,8 @@ def main() -> int:
 
     log_path = configure_logging()
     logging.getLogger(__name__).info("Buyruq boshlandi: %s", args.command)
+    if _ENV_FILE:
+        logging.getLogger(__name__).info("Muhit fayli yuklandi: %s", _ENV_FILE)
 
     init_db()
     with SessionLocal() as db:
@@ -259,8 +316,19 @@ def main() -> int:
             print(json.dumps({"requeued": count, "max_attempts": args.max_attempts}, ensure_ascii=False, indent=2))
             return 0
         if args.command == "harvest-all":
-            result = ingest_all_sources(db, from_date=args.from_date, page_limit=args.page_limit, workers=args.workers, selected_source_ids=args.source_ids)
-            result["logFile"] = str(log_path)
+            if args.full and args.from_date:
+                raise SystemExit("--full va --from-date birga berilmaydi")
+            result = ingest_all_sources(
+                db,
+                from_date=args.from_date,
+                page_limit=args.page_limit,
+                workers=args.workers,
+                selected_source_ids=args.source_ids,
+                since_last_success=not args.full and not args.from_date,
+                retry_failed=args.retry_failed,
+                respect_backoff=not args.ignore_backoff,
+            )
+            result["logFile"] = str(log_path) if log_path else None
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "import-tadqiq":
@@ -271,7 +339,7 @@ def main() -> int:
                 limit=args.limit,
                 fix_dead_sites=args.fix_dead_sites,
             )
-            result["logFile"] = str(log_path)
+            result["logFile"] = str(log_path) if log_path else None
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "grant-admin":

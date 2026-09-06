@@ -20,7 +20,7 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from sqlalchemy import delete, or_, select
@@ -107,6 +107,34 @@ def redirect_uri(provider: str) -> str:
     return f"{public_base_url()}/api/auth/{provider}/callback"
 
 
+# `redirect_to` uchun oqilona chegara; frontend `window.location.href` yuboradi.
+MAX_REDIRECT_LENGTH = 2048
+
+
+def safe_redirect(value: str | None) -> str | None:
+    """Kirishdan keyin qaytish manzilini faqat o'z saytimiz bilan cheklaydi.
+
+    Ilgari `?redirect_to=https://evil.example` tekshirilmasdan saqlanib,
+    muvaffaqiyatli kirishdan so'ng aynan o'sha manzilga 307 qaytarilardi —
+    ochiq yo'naltirish (fishing havolasi ilmiz.uz nomidan ko'rinardi).
+
+    Ruxsat: `/` bilan boshlanuvchi nisbiy yo'l (`//host` emas) yoki sxema va
+    hosti `ILMIZ_PUBLIC_URL` ga teng absolyut URL. Qolgani `None` — bosh sahifa.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    if not value or len(value) > MAX_REDIRECT_LENGTH or not value.isprintable() or "\\" in value:
+        return None
+    if value.startswith("/"):
+        return None if value.startswith("//") else value
+    parsed = urlsplit(value)
+    base = urlsplit(public_base_url())
+    if parsed.scheme == base.scheme and parsed.netloc.casefold() == base.netloc.casefold():
+        return value
+    return None
+
+
 def available_providers() -> list[str]:
     return [name for name in ("orcid", "google") if provider_config(name).configured]
 
@@ -122,18 +150,23 @@ def create_state(db: Session, provider: str, redirect_to: str | None) -> str:
 
 
 def consume_state(db: Session, provider: str, state: str) -> str | None:
-    """State'ni bir marta ishlatadi va o'chiradi.
+    """State'ni bir marta ishlatadi va o'chiradi; `redirect_to` ni qaytaradi.
 
-    Qaytmaydigan qiymat — noto'g'ri yoki muddati o'tgan state.
+    Noto'g'ri yoki muddati o'tgan state — `LookupError`. Ilgari bu holat ham
+    `None` bilan bildirilardi, `redirect_to` bo'sh bo'lgan haqiqiy state ham
+    `None` qaytarardi; `main.py` ikkalasini ajrata olmay, qator allaqachon
+    o'chirilgani uchun `redirect_to`siz kirishni doim 400 bilan rad etardi.
     """
     row = db.scalar(select(OAuthState).where(OAuthState.state == state, OAuthState.provider == provider))
     if row is None:
-        return None
+        raise LookupError("state topilmadi")
     fresh = row.created_at.replace(tzinfo=timezone.utc) >= datetime.now(timezone.utc) - STATE_TTL
     redirect_to = row.redirect_to
     db.delete(row)
     db.commit()
-    return redirect_to if fresh else None
+    if not fresh:
+        raise LookupError("state muddati o'tgan")
+    return redirect_to
 
 
 def authorize_url(provider: str, state: str) -> str:

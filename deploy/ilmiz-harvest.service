@@ -1,0 +1,39 @@
+[Unit]
+Description=IlmIz OAI-PMH inkremental harvest (timer orqali ishga tushadi)
+Documentation=https://github.com/muslim0203/ilmiz
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/ilmiz/ilmiz.db
+# API xizmati bilan bir vaqtda ishlashi mumkin: baza WAL rejimida,
+# harvest har 100 yozuvda qisqa commit qiladi.
+
+[Service]
+Type=oneshot
+User=ilmiz
+Group=ilmiz
+WorkingDirectory=/opt/ilmiz/app
+EnvironmentFile=/etc/ilmiz/staging.env
+# Kod katalogi faqat o'qiladi; loglar baza yonida turadi.
+Environment=ILMIZ_LOG_DIR=/var/lib/ilmiz/logs
+# Standart rejim inkremental: har manba o'z oxirgi muvaffaqiyatidan 1 kun
+# oldingi sanadan boshlaydi. Haftada bir `--retry-failed` ni timer'ning
+# alohida nusxasi emas, shu unit'ning o'zi bajaradi (pastdagi izohga qarang).
+ExecStart=/opt/ilmiz/venv/bin/python backend/manage.py harvest-all --workers 3
+# 120 manba to'liq tarix bilan ham bir necha soatga sig'adi.
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ilmiz
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import re
 import sys
@@ -28,6 +29,17 @@ OAI = "http://www.openarchives.org/OAI/2.0/"
 DC = "http://purl.org/dc/elements/1.1/"
 NS = {"oai": OAI, "dc": DC}
 USER_AGENT = "IlmIz-OAI-Harvester/0.1 (+https://ilmiz.uz/about)"
+
+
+# Qayta urinishga arziydigan HTTP kodlari.
+RETRYABLE_HTTP = frozenset({429, 500, 502, 503, 504})
+# Tarmoq darajasidagi vaqtinchalik xatolar. `URLError` va `ssl.SSLError`
+# `OSError` ning, `IncompleteRead`/`RemoteDisconnected` esa
+# `http.client.HTTPException` ning avlodi.
+TRANSIENT_ERRORS = (OSError, TimeoutError, http.client.HTTPException)
+# `badResumptionToken` dan keyin oxirgi datestamp'dan necha marta qayta
+# boshlashga ruxsat beriladi.
+MAX_TOKEN_RESTARTS = 2
 
 
 class OAIError(RuntimeError):
@@ -88,11 +100,15 @@ def _request(
         except urllib.error.HTTPError as error:
             last_error = error
             retry_after = error.headers.get("Retry-After")
-            if error.code not in {429, 502, 503, 504} or attempt == retries - 1:
+            # 500 ham ro‘yxatda: OJS'da u ko‘pincha vaqtinchalik (PHP xotira
+            # limiti, baza ulanishi) va keyingi urinishda o‘tib ketadi.
+            if error.code not in RETRYABLE_HTTP or attempt == retries - 1:
                 break
             wait_seconds = int(retry_after) if retry_after and retry_after.isdigit() else 2 ** attempt
             time.sleep(min(wait_seconds, 30))
-        except (urllib.error.URLError, TimeoutError) as error:
+        except TRANSIENT_ERRORS as error:
+            # `IncompleteRead` va `RemoteDisconnected` `URLError` emas — ular
+            # ilgari ushlanmay 1 400 yozuvdan keyin butun run'ni yiqitgan.
             last_error = error
             if attempt == retries - 1:
                 break
@@ -203,32 +219,63 @@ def harvest(
     page_limit: int | None = None,
     verify_ssl: bool = True,
 ) -> Iterator[OAIRecord]:
-    params = {"verb": "ListRecords", "metadataPrefix": metadata_prefix}
+    base_params = {"verb": "ListRecords", "metadataPrefix": metadata_prefix}
     if from_date:
-        params["from"] = from_date
+        base_params["from"] = from_date
     if until_date:
-        params["until"] = until_date
+        base_params["until"] = until_date
     if set_spec:
-        params["set"] = set_spec
+        base_params["set"] = set_spec
+    params = dict(base_params)
 
     page = 0
+    restarts = 0
+    last_datestamp: str | None = None
     while True:
         try:
             root = _root(_request(base_url, params, timeout=timeout, verify_ssl=verify_ssl))
         except OAIError as error:
             if str(error).startswith("noRecordsMatch:"):
                 return
+            # Token muddati tugagan (sekin harvest, server qayta ishga
+            # tushgan). Oqimni boshidan emas, oxirgi ko‘rilgan kundan davom
+            # ettiramiz — takror yozuvlar `metadata_hash` bilan filtrlanadi.
+            if (
+                str(error).startswith("badResumptionToken")
+                and "resumptionToken" in params
+                and last_datestamp
+                and restarts < MAX_TOKEN_RESTARTS
+            ):
+                restarts += 1
+                params = dict(base_params)
+                params["from"] = _restart_from(last_datestamp, base_params.get("from"))
+                continue
             raise
         list_records = root.find("oai:ListRecords", NS)
         if list_records is None:
             raise OAIError("ListRecords element is missing")
         for record in list_records.findall("oai:record", NS):
-            yield _parse_record(record)
+            parsed = _parse_record(record)
+            if parsed.datestamp:
+                last_datestamp = parsed.datestamp
+            yield parsed
         page += 1
         token = _text(list_records.find("oai:resumptionToken", NS))
         if not token or (page_limit is not None and page >= page_limit):
             break
         params = {"verb": "ListRecords", "resumptionToken": token}
+
+
+def _restart_from(last_datestamp: str, original_from: str | None) -> str:
+    """Qayta boshlash uchun `from` qiymati.
+
+    Kun aniqligida (`YYYY-MM-DD`) beriladi, chunki har ikki granularity'dagi
+    repozitoriy ham uni qabul qiladi. Asl `from` dan orqaga ketmaydi.
+    """
+    day = last_datestamp[:10]
+    if original_from and original_from[:10] > day:
+        return original_from
+    return day
 
 
 def write_jsonl(records: Iterable[OAIRecord], output: Path | None) -> int:

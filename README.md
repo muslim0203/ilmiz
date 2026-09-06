@@ -224,8 +224,38 @@ Rasmiy OAK reestrini yangilash va endpoint audit navbatini boshqarish:
 # Barcha audit navbatini parallel yakunlash
 .\.venv\Scripts\python.exe backend\manage.py drain-audits --batch-size 24 --workers 4
 
-# Topilgan barcha OAI manbalardan to‘liq tarixni olish (page-limit yo‘q)
+# Barcha faol OAI manbalarni yangilash. Standart rejim inkremental: har manba
+# o‘z `last_success_at` idan 1 kun oldingi sanadan boshlaydi, hech qachon
+# muvaffaqiyatli bo‘lmagan manba to‘liq tortiladi.
 .\.venv\Scripts\python.exe backend\manage.py harvest-all --workers 3
+
+.\.venv\Scripts\python.exe backend\manage.py harvest-all --full                 # to‘liq tarix
+.\.venv\Scripts\python.exe backend\manage.py harvest-all --from-date 2026-08-20 # bitta sana
+.\.venv\Scripts\python.exe backend\manage.py harvest-all --retry-failed         # yiqilganlarni qayta audit
+```
+
+Manba holatlari: `healthy` — oxirgi harvest o‘tgan; `degraded` — oxirgi
+urinish(lar) yiqilgan, lekin manba hali ro‘yxatda va ketma-ket xatolar soniga
+qarab 2, 4, 8 … soat (ko‘pi bilan bir hafta) kutib qayta uriniladi
+(`--ignore-backoff` kutmaydi); `failed` — 10 ta ketma-ket xato yoki audit
+o‘tmagan, faqat `--retry-failed` yoki `harvest <slug> <url>` qaytaradi.
+Harvester HTTP 429/500/502/503/504 va uzilgan ulanishlarni 3 martagacha qayta
+uradi, `badResumptionToken` da oxirgi ko‘rilgan sanadan davom etadi.
+
+Serverda harvest **systemd timer** bilan har kuni 03:00 UTC da,
+yiqilganlarni qayta audit qilish yakshanba 14:00 UTC da bajariladi:
+
+```bash
+sudo bash /opt/ilmiz/app/deploy/install_harvest_timer.sh   # bir marta
+sudo systemctl start ilmiz-harvest.service                 # kutmasdan boshlash
+sudo journalctl -fu ilmiz-harvest.service                  # kuzatish
+```
+
+`manage.py` ni serverda qo‘lda ishga tushirganda muhit faylini ko‘rsating,
+aks holda `DATABASE_URL` siz u joriy katalogda yangi bo‘sh baza yaratadi:
+
+```bash
+sudo -u ilmiz env ILMIZ_ENV_FILE=/etc/ilmiz/staging.env ILMIZ_LOG_DIR=/var/lib/ilmiz/logs   /opt/ilmiz/venv/bin/python /opt/ilmiz/app/backend/manage.py harvest-all --workers 3
 ```
 
 Saqlangan `raw_metadata` dan jild/son/betlarni qayta hisoblash (qayta harvest
@@ -244,8 +274,8 @@ qilmasdan, parser tuzatilgandan keyin):
 .\.venv\Scripts\python.exe backend\manage.py drop-raw-metadata
 ```
 
-Harvest xatolari `logs/ilmiz.log` ga yoziladi va `harvest-all` natijasida
-`errors[]` sifatida qaytadi.
+Harvest xatolari `logs/ilmiz.log` ga (yoki `ILMIZ_LOG_DIR` katalogiga) yoziladi
+va `harvest-all` natijasida `errors[]` sifatida qaytadi.
 
 ### tadqiq.uz dan yetishmayotgan maydonlarni to‘ldirish
 
@@ -355,7 +385,6 @@ harvester/            OAI-PMH discovery va harvest client
 
 ## Keyingi vertikal
 
-1. Auditdan o‘tgan manbalar uchun harvest scheduler.
-2. DOI/ORCID deduplikatsiyasi va metama’lumot sifati.
+1. DOI/ORCID deduplikatsiyasi va metama’lumot sifati.
 3. Admin autentifikatsiyasi va rol nazorati.
 4. Production PostgreSQL va to‘liq matnli qidiruv.

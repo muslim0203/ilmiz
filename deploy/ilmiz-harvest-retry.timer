@@ -1,0 +1,14 @@
+[Unit]
+Description=IlmIz: yiqilgan OAI manbalarni haftada bir qayta audit qilish
+
+[Timer]
+# Yakshanba 14:00 UTC (kunlik 03:00 dagi harvestdan ancha keyin). Ilgari
+# kamida bir marta ishlagan `failed` manbalar qayta audit qilinadi,
+# o'tganlari harvest qilinadi; faol manbalar ham inkremental yangilanadi.
+OnCalendar=Sun *-*-* 14:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=ilmiz-harvest-retry.service
+
+[Install]
+WantedBy=timers.target

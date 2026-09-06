@@ -18,7 +18,13 @@ const ThemeContext = createContext<ThemeContextValue>({
 
 function readStoredTheme(): Theme {
   if (typeof window === "undefined") return "system";
-  const stored = window.localStorage.getItem(STORAGE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Safari private rejimi yoki bloklangan storage: `getItem` throw qiladi
+    // va ilova birinchi render'da yiqilardi. Bu holda faqat tizim mavzusi.
+  }
   return stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
 }
 
@@ -45,7 +51,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [resolved]);
 
   const setTheme = useCallback((next: Theme) => {
-    window.localStorage.setItem(STORAGE_KEY, next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* saqlanmasa ham mavzu shu sessiyada ishlaydi */
+    }
     setThemeState(next);
   }, []);
 

@@ -1057,7 +1057,7 @@ def auth_start(provider: str, redirect_to: str | None = None, db: Session = Depe
             status_code=503,
             detail=f"{provider} sozlanmagan: CLIENT_ID va CLIENT_SECRET muhit o‘zgaruvchilari kerak.",
         )
-    state = auth_service.create_state(db, provider, redirect_to)
+    state = auth_service.create_state(db, provider, auth_service.safe_redirect(redirect_to))
     return RedirectResponse(auth_service.authorize_url(provider, state), status_code=307)
 
 
@@ -1075,12 +1075,13 @@ def auth_callback(
         return RedirectResponse(f"{auth_service.public_base_url()}/?auth=bekor", status_code=307)
     if not code or not state:
         raise HTTPException(status_code=400, detail="code yoki state yetishmayapti")
-    redirect_to = auth_service.consume_state(db, provider, state)
-    if redirect_to is None and state:
-        # `consume_state` None qaytarsa, state yaroqsiz yoki muddati o‘tgan.
-        stored = db.scalar(select(auth_service.OAuthState).where(auth_service.OAuthState.state == state))
-        if stored is None:
-            raise HTTPException(status_code=400, detail="state yaroqsiz yoki muddati o‘tgan")
+    try:
+        redirect_to = auth_service.consume_state(db, provider, state)
+    except LookupError as failure:
+        raise HTTPException(status_code=400, detail="state yaroqsiz yoki muddati o‘tgan") from failure
+    # Saqlangan qiymat allaqachon tekshirilgan; bu yerda yana bir bor —
+    # eski qatorlar yoki bazaga qo‘lda kiritilgan qiymatlarga ishonmaymiz.
+    redirect_to = auth_service.safe_redirect(redirect_to)
     try:
         identity = auth_service.exchange_code(provider, code)
     except Exception as failure:  # noqa: BLE001 - provayder xatosi foydalanuvchiga ko‘rinmasin

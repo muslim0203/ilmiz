@@ -9,6 +9,7 @@ ushlab qolsak, Windows'da vaqtinchalik baza fayli band bo'lib qolardi.
 """
 from __future__ import annotations
 
+import logging
 import sys
 from logging.config import fileConfig
 from pathlib import Path
@@ -22,7 +23,14 @@ from backend.app import models  # noqa: E402,F401  (modellar ro'yxatga olinishi 
 from backend.app.db import DATABASE_URL, Base, make_engine  # noqa: E402
 
 config = context.config
-if config.config_file_name is not None:
+# `fileConfig` root handler'larni alembic.ini dagilar bilan almashtiradi va
+# `disable_existing_loggers=True` bilan allaqachon yaratilgan nomli
+# logger'larni (masalan `backend.app.services.ingest`) o'chirib qo'yadi.
+# `manage.py` `init_db()` dan oldin o'z log faylini sozlaydi — shu sabab
+# 31-avgustdan beri harvest xatolari `logs/ilmiz.log` ga tushmay qolgan edi.
+# Ilova (uvicorn) yoki `alembic` CLI'da root handler bo'lmaydi va eski
+# xatti-harakat saqlanadi.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata

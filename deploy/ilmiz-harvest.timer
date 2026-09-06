@@ -1,0 +1,16 @@
+[Unit]
+Description=IlmIz OAI-PMH harvest'ni har kuni ishga tushirish
+
+[Timer]
+# Har kuni 03:00 (server vaqti, UTC) — O'zbekistonda 08:00, jurnal
+# saytlari bo'sh paytda. Tasodifiy kechikish OJS saytlariga bir vaqtda
+# yopirilmaslik uchun.
+OnCalendar=*-*-* 03:00:00
+RandomizedDelaySec=15min
+# Server o'chiq bo'lgan payt o'tkazib yuborilgan yurgizish keyingi
+# yoqilganda bajariladi.
+Persistent=true
+Unit=ilmiz-harvest.service
+
+[Install]
+WantedBy=timers.target

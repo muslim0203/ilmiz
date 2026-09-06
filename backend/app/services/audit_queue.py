@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import SessionLocal
 from ..models import AuditJob, HarvestSource, Journal
-from .ingest import audit_source
+from .ingest import ACTIVE_SOURCE_STATUSES, audit_source
 
 USER_AGENT = "IlmIz-OAI-Discovery/0.2"
 
@@ -103,7 +103,7 @@ def enqueue_audits(db: Session, *, limit: int | None = None) -> int:
     journals = list(db.scalars(statement).unique())
     created = 0
     for journal in journals:
-        if any(source.status == "healthy" for source in journal.harvest_sources):
+        if any(source.status in ACTIVE_SOURCE_STATUSES for source in journal.harvest_sources):
             continue
         website = (journal.website or "").strip()
         if not endpoint_candidates(website):

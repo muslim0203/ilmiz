@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..db import SessionLocal
 from ..models import HarvestSource, Journal, JournalProfile, ProfileJob
+from .ingest import ACTIVE_SOURCE_STATUSES
 from .profile_collector import collect_profile
 
 
@@ -37,7 +38,7 @@ def enqueue_profiles(db: Session, *, limit: int | None = None, refresh: bool = F
             continue
         if journal.profile is not None and not refresh:
             continue
-        is_ojs = "/index.php/" in website or any(source.status == "healthy" for source in journal.harvest_sources)
+        is_ojs = "/index.php/" in website or any(source.status in ACTIVE_SOURCE_STATUSES for source in journal.harvest_sources)
         priority = 10 if is_ojs else 100
         db.add(ProfileJob(journal=journal, source_url=website, priority=priority))
         created += 1

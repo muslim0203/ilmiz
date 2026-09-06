@@ -1,0 +1,33 @@
+[Unit]
+Description=IlmIz OAI-PMH harvest, yiqilgan manbalarni qayta audit bilan
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/ilmiz/ilmiz.db
+# Kunlik harvest 03:00 UTC da; bu unit yakshanba 14:00 UTC da — ikkalasi
+# bir vaqtda ishlamasligi uchun vaqt bo'yicha ajratilgan.
+
+[Service]
+Type=oneshot
+User=ilmiz
+Group=ilmiz
+WorkingDirectory=/opt/ilmiz/app
+EnvironmentFile=/etc/ilmiz/staging.env
+Environment=ILMIZ_LOG_DIR=/var/lib/ilmiz/logs
+ExecStart=/opt/ilmiz/venv/bin/python backend/manage.py harvest-all --workers 3 --retry-failed --ignore-backoff
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ilmiz
+RestrictSUIDSGID=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal

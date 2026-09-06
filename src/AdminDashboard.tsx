@@ -61,6 +61,16 @@ const statusLabel: Record<string, string> = {
   warning: "Ogohlantirish",
 };
 
+/** URL hosti; `job.website` scraper'dan kelgan matn bo‘lgani uchun
+ *  `new URL` yaroqsiz qiymatda throw qilib butun panelni yiqitardi. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 function Status({ value }: { value: string }) {
   const Icon =
     value === "succeeded" || value === "healthy"
@@ -556,7 +566,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                       >
-                        {new URL(job.website).hostname}
+                        {hostOf(job.website)}
                         <ExternalLink className="size-3" />
                       </a>
                     </TableCell>
@@ -619,7 +629,7 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
                       >
-                        {new URL(job.website).hostname}
+                        {hostOf(job.website)}
                         <ExternalLink className="size-3" />
                       </a>
                     </TableCell>

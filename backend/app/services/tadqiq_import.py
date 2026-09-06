@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import HarvestSource, Journal, JournalProfile, JournalProfileField
+from .ingest import ACTIVE_SOURCE_STATUSES
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +398,7 @@ def journals_with_dead_sites(db: Session) -> set[int]:
     statuses: dict[int, set[str]] = {}
     for journal_id, status in db.execute(select(HarvestSource.journal_id, HarvestSource.status)):
         statuses.setdefault(journal_id, set()).add(status)
-    return {journal_id for journal_id, values in statuses.items() if values and "healthy" not in values}
+    return {journal_id for journal_id, values in statuses.items() if values and values.isdisjoint(ACTIVE_SOURCE_STATUSES)}
 
 
 def _is_empty(value: object) -> bool:

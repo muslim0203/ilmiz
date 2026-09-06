@@ -10,6 +10,12 @@ PUBLIC_DEPLOY_FILES = {
     'requirements-ovh-20260831.txt', 'runtime-constraints.txt',
     'test_prepare_staging.py', 'test_repository_guard.py',
     'ci_deploy.py', 'test_ci_deploy.py',
+    # OAI-PMH harvest jadvali (systemd timer) va uni o'rnatuvchi skript.
+    'ilmiz-harvest.service', 'ilmiz-harvest.timer',
+    'ilmiz-harvest-retry.service', 'ilmiz-harvest-retry.timer',
+    'install_harvest_timer.sh',
+    # Serverdagi kodni arxiv bilan yangilash (zaxira, test, rollback).
+    'update_app.sh',
 }
 
 
@@ -23,6 +29,9 @@ def main():
     args.output.mkdir(parents=True, exist_ok=False)
     files = list((root / 'backend').rglob('*.py')) + list((root / 'harvester').rglob('*.py'))
     files += [root / 'backend/requirements.txt']
+    # `init_db()` migratsiyalar uchun ildizdagi alembic.ini ni o'qiydi;
+    # usiz yangi serverda xizmat startda yiqiladi.
+    files += [root / 'alembic.ini']
     files += [p for p in (root / 'dist').rglob('*') if p.is_file()]
     files += [root / 'deploy' / name for name in PUBLIC_DEPLOY_FILES]
     assert root / 'harvester/oai_harvester.py' in files

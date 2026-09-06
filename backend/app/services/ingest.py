@@ -4,7 +4,7 @@ import logging
 import re
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from pathlib import Path
@@ -22,9 +22,24 @@ from ..models import Article, HarvestRun, HarvestSource, Journal, SourceRecord
 
 logger = logging.getLogger(__name__)
 
+# Harvest qilinadigan manba holatlari. `degraded` — oxirgi urinish(lar)
+# yiqilgan, lekin manba hali tashlab yuborilmagan: OJS saytlari vaqti-vaqti
+# bilan 500/504 beradi va ertasiga yana ishlaydi. Ilgari bitta xato manbani
+# darhol `failed` qilib, `harvest-all` ro‘yxatidan abadiy chiqarib yuborardi.
+ACTIVE_SOURCE_STATUSES = ("healthy", "degraded")
+# Shuncha ketma-ket xatodan keyin manba `failed` bo‘ladi va faqat qayta
+# audit (`--retry-failed` yoki qo‘lda `harvest <slug> <url>`) uni qaytaradi.
+FAILED_AFTER = 10
+# Inkremental harvest'da `last_success_at` dan shuncha kun orqaga qaytamiz:
+# repozitoriy soati bizniki bilan farq qilishi va bir kunlik yozuvlar
+# harvest o‘rtasida kelishi mumkin. Takrorlar `metadata_hash` bilan filtrlanadi.
+INCREMENTAL_OVERLAP_DAYS = 1
+# Yiqilgan manbaga qayta urinish oralig‘i: 2, 4, 8 ... soat, ko‘pi bilan bir hafta.
+MAX_BACKOFF_HOURS = 168
+
 
 def _mark_run_failed(run_id: int, source_id: int, message: str) -> bool:
-    """Run va source'ni `failed` deb belgilaydi.
+    """Run'ni `failed`, manbani `degraded` (yoki chegaradan so‘ng `failed`) qiladi.
 
     Xatoni yozish uchun toza sessiya ochamiz: harvest paytida yiqilgan sessiya
     bilan commit qilishga urinsak, o‘sha commit ham yiqilib run abadiy
@@ -40,9 +55,9 @@ def _mark_run_failed(run_id: int, source_id: int, message: str) -> bool:
                 run.error_summary = message[:2000]
                 run.finished_at = now
             if source is not None:
-                source.status = "failed"
-                source.last_error = message[:2000]
                 source.consecutive_failures += 1
+                source.status = "failed" if source.consecutive_failures >= FAILED_AFTER else "degraded"
+                source.last_error = message[:2000]
                 source.last_attempt_at = now
             db.commit()
         return True
@@ -182,7 +197,7 @@ def audit_source(
         select(HarvestSource).where(
             HarvestSource.base_url == base_url,
             HarvestSource.journal_id != journal.id,
-            HarvestSource.status == "healthy",
+            HarvestSource.status.in_(ACTIVE_SOURCE_STATUSES),
         )
     )
     if taken is not None:
@@ -424,18 +439,72 @@ def ingest_source(db: Session, source: HarvestSource, *, from_date: str | None, 
     return run
 
 
-def _ingest_source_by_id(source_id: int, from_date: str | None, page_limit: int | None) -> dict[str, int | str]:
+def _as_utc(value: datetime | None) -> datetime | None:
+    """SQLite `DateTime(timezone=True)` qiymatni tzinfo'siz qaytaradi."""
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def incremental_from_date(source: HarvestSource, *, overlap_days: int = INCREMENTAL_OVERLAP_DAYS) -> str | None:
+    """Manba uchun inkremental `from` sanasi (`YYYY-MM-DD`).
+
+    Hech qachon muvaffaqiyatli harvest bo‘lmagan bo‘lsa `None` — to‘liq
+    harvest kerak. Kun aniqligi ataylab: OAI-PMH bo‘yicha har ikki
+    granularity'dagi repozitoriy ham uni qabul qiladi.
+    """
+    last = _as_utc(source.last_success_at)
+    if last is None:
+        return None
+    return (last - timedelta(days=overlap_days)).date().isoformat()
+
+
+def backoff_until(source: HarvestSource) -> datetime | None:
+    """`degraded` manbaga qachongacha tegmaslik kerak.
+
+    Ketma-ket xatolar soniga qarab 2, 4, 8 ... soat, ko‘pi bilan bir hafta.
+    Sog‘ manba yoki hech qachon urinilmagan manba uchun `None`.
+    """
+    if source.status != "degraded" or source.consecutive_failures <= 0:
+        return None
+    attempted = _as_utc(source.last_attempt_at)
+    if attempted is None:
+        return None
+    hours = min(2 ** source.consecutive_failures, MAX_BACKOFF_HOURS)
+    return attempted + timedelta(hours=hours)
+
+
+def _ingest_source_by_id(
+    source_id: int,
+    from_date: str | None,
+    page_limit: int | None,
+    *,
+    since_last_success: bool = False,
+) -> dict[str, int | str]:
+    empty = {"seen": 0, "created": 0, "updated": 0, "deleted": 0}
     with SessionLocal() as worker_db:
         source = worker_db.get(HarvestSource, source_id)
         if source is None:
             logger.error("Source %s topilmadi", source_id)
-            return {"status": "failed", "seen": 0, "created": 0, "updated": 0, "deleted": 0, "error": "source topilmadi"}
+            return {"status": "failed", **empty, "error": "source topilmadi"}
         base_url = source.base_url
+        if source.status == "failed":
+            # `--retry-failed`: avval endpoint tirikligini tekshiramiz; audit
+            # o‘zi holatni `healthy` ga qaytaradi yoki xatoni yozadi.
+            try:
+                audit_source(worker_db, source.journal, base_url, allow_insecure_ssl=True)
+            except Exception as error:
+                logger.warning("Source %s (%s) qayta auditdan o‘tmadi: %s", source_id, base_url, error)
+                return {"status": "failed", **empty, "error": f"audit: {type(error).__name__}: {error}"[:500]}
+        effective_from = from_date
+        if effective_from is None and since_last_success:
+            effective_from = incremental_from_date(source)
         try:
-            run = ingest_source(worker_db, source, from_date=from_date, page_limit=page_limit)
+            run = ingest_source(worker_db, source, from_date=effective_from, page_limit=page_limit)
             logger.info(
-                "Harvest tugadi: source=%s url=%s seen=%s created=%s updated=%s deleted=%s",
-                source_id, base_url, run.records_seen, run.records_created, run.records_updated, run.records_deleted,
+                "Harvest tugadi: source=%s url=%s from=%s seen=%s created=%s updated=%s deleted=%s",
+                source_id, base_url, effective_from or "-",
+                run.records_seen, run.records_created, run.records_updated, run.records_deleted,
             )
             return {
                 "status": run.status,
@@ -449,33 +518,71 @@ def _ingest_source_by_id(source_id: int, from_date: str | None, page_limit: int 
             # Traceback ingest_source ichida allaqachon yozilgan; bu yerda faqat
             # xulosani natijaga qo‘shamiz, chunki avval xato butunlay yo‘qolardi.
             logger.warning("Source %s (%s) harvest qilinmadi: %s", source_id, base_url, error)
-            return {
-                "status": "failed",
-                "seen": 0,
-                "created": 0,
-                "updated": 0,
-                "deleted": 0,
-                "error": f"{type(error).__name__}: {error}"[:500],
-            }
+            return {"status": "failed", **empty, "error": f"{type(error).__name__}: {error}"[:500]}
 
 
-def ingest_all_sources(db: Session, *, from_date: str | None = None, page_limit: int | None = None, workers: int = 3, selected_source_ids: list[int] | None = None) -> dict[str, object]:
-    # Faqat OAI manbalari. OpenAlex import qilgan manbalar `metadata_prefix`
-    # bilan ajratiladi — ularni OAI harvesteriga bersak, so'rov xato bo'lib
-    # manba `failed` deb belgilanardi.
-    source_ids = selected_source_ids or list(
-        db.scalars(
-            select(HarvestSource.id).where(
-                HarvestSource.status == "healthy",
-                HarvestSource.metadata_prefix == "oai_dc",
-            )
+def select_harvest_sources(
+    db: Session,
+    *,
+    retry_failed: bool = False,
+    respect_backoff: bool = True,
+    now: datetime | None = None,
+) -> tuple[list[int], list[int]]:
+    """Harvest qilinadigan va backoff tufayli o‘tkazib yuborilgan manba id'lari.
+
+    Faqat OAI manbalari (`oai_dc`). OpenAlex import qilgan manbalar
+    `metadata_prefix` bilan ajratiladi — ularni OAI harvesteriga bersak,
+    so‘rov xato bo‘lib manba `failed` deb belgilanardi.
+    `retry_failed` bilan ilgari kamida bir marta ishlagan `failed` manbalar ham
+    olinadi (ular harvestdan oldin qayta audit qilinadi).
+    """
+    now = now or datetime.now(timezone.utc)
+    statement = select(HarvestSource).where(HarvestSource.metadata_prefix == "oai_dc")
+    if retry_failed:
+        statement = statement.where(
+            HarvestSource.status.in_(ACTIVE_SOURCE_STATUSES)
+            | ((HarvestSource.status == "failed") & HarvestSource.last_success_at.is_not(None))
         )
-    )
-    totals: dict[str, object] = {"sources": len(source_ids), "succeeded": 0, "failed": 0, "seen": 0, "created": 0, "updated": 0, "deleted": 0}
+    else:
+        statement = statement.where(HarvestSource.status.in_(ACTIVE_SOURCE_STATUSES))
+    chosen: list[int] = []
+    skipped: list[int] = []
+    for source in db.scalars(statement.order_by(HarvestSource.id)):
+        until = backoff_until(source) if respect_backoff else None
+        if until is not None and until > now:
+            skipped.append(source.id)
+            continue
+        chosen.append(source.id)
+    return chosen, skipped
+
+
+def ingest_all_sources(
+    db: Session,
+    *,
+    from_date: str | None = None,
+    page_limit: int | None = None,
+    workers: int = 3,
+    selected_source_ids: list[int] | None = None,
+    since_last_success: bool = False,
+    retry_failed: bool = False,
+    respect_backoff: bool = True,
+) -> dict[str, object]:
+    skipped: list[int] = []
+    if selected_source_ids:
+        source_ids = list(selected_source_ids)
+    else:
+        source_ids, skipped = select_harvest_sources(db, retry_failed=retry_failed, respect_backoff=respect_backoff)
+    totals: dict[str, object] = {
+        "sources": len(source_ids), "skipped": len(skipped),
+        "mode": "incremental" if (from_date or since_last_success) else "full",
+        "succeeded": 0, "failed": 0, "seen": 0, "created": 0, "updated": 0, "deleted": 0,
+    }
     errors: list[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=min(max(1, workers), len(source_ids) or 1)) as executor:
         futures = {
-            executor.submit(_ingest_source_by_id, source_id, from_date, page_limit): source_id
+            executor.submit(
+                _ingest_source_by_id, source_id, from_date, page_limit, since_last_success=since_last_success
+            ): source_id
             for source_id in source_ids
         }
         for future in as_completed(futures):
