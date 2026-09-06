@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import Journal, JournalContact, JournalProfile, JournalProfileField
-from . import completeness
+from . import completeness, netguard
 from .text_clean import balance_parens as _balance_parens, is_valid_phone
 
 MANUAL_SOURCE = "admin:manual"
@@ -82,6 +82,13 @@ def _clean_website(value: str) -> str | None:
         return None
     if not text.startswith(("http://", "https://")):
         raise ValidationError("Sayt manzili http:// yoki https:// bilan boshlanishi kerak")
+    # Profil yig‘uvchi shu manzilni oladi — ichki manzil (127.0.0.1, 10.x)
+    # bo‘lsa SSRF bo‘lardi. DNS'siz tekshiruv: saqlash paytida tarmoqqa chiqmaymiz,
+    # to‘liq tekshiruv olish paytida (`netguard.assert_public_url`).
+    try:
+        netguard.assert_public_url(text, resolve=False)
+    except netguard.UnsafeURL as error:
+        raise ValidationError(f"Sayt manzili qabul qilinmadi: {error}") from error
     return text
 
 

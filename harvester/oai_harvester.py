@@ -23,7 +23,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator
 
 OAI = "http://www.openarchives.org/OAI/2.0/"
 DC = "http://purl.org/dc/elements/1.1/"
@@ -41,9 +41,32 @@ TRANSIENT_ERRORS = (OSError, TimeoutError, http.client.HTTPException)
 # boshlashga ruxsat beriladi.
 MAX_TOKEN_RESTARTS = 2
 
+# Har bir so‘rov va har bir redirect manzili uchun chaqiriladigan tekshiruv.
+# Modul o‘zi tashqi bog‘liqliksiz qolishi uchun hook — backend `ingest`
+# import paytida `netguard.assert_public_url` ni o‘rnatadi. Xato ko‘tarsa
+# so‘rov bajarilmaydi (SSRF: ichki manzilga redirect).
+URL_GUARD: Callable[[str], object] | None = None
+
 
 class OAIError(RuntimeError):
     pass
+
+
+class _GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if URL_GUARD is not None:
+            try:
+                URL_GUARD(newurl)
+            except Exception as error:
+                raise OAIError(f"Redirect rad etildi ({newurl}): {error}") from error
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _opener(context: ssl.SSLContext | None) -> urllib.request.OpenerDirector:
+    handlers: list[urllib.request.BaseHandler] = [_GuardedRedirectHandler()]
+    if context is not None:
+        handlers.append(urllib.request.HTTPSHandler(context=context))
+    return urllib.request.build_opener(*handlers)
 
 
 @dataclass(slots=True)
@@ -91,11 +114,17 @@ def _request(
         url,
         headers={"Accept": "application/xml,text/xml", "Accept-Encoding": "identity", "User-Agent": USER_AGENT},
     )
+    if URL_GUARD is not None:
+        try:
+            URL_GUARD(base_url)
+        except Exception as error:
+            raise OAIError(f"Manzil rad etildi ({base_url}): {error}") from error
     context = None if verify_ssl else _insecure_context()
+    opener = _opener(context)
     last_error: Exception | None = None
     for attempt in range(retries):
         try:
-            with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            with opener.open(request, timeout=timeout) as response:
                 return response.read()
         except urllib.error.HTTPError as error:
             last_error = error

@@ -40,6 +40,22 @@ def article_search_text(title: str | None, abstract: str | None, authors: list[s
     return normalize(" ".join(part for part in parts if part))
 
 
+LIKE_ESCAPE = "\\"
+
+
+def escape_like(value: str) -> str:
+    """`LIKE` joker belgilarini ekranlaydi; `.like(..., escape=LIKE_ESCAPE)` bilan ishlatiladi.
+
+    Foydalanuvchi so'zi to'g'ridan-to'g'ri patternga qo'shilardi: `%%%%`
+    to'liq skan va nomaqbul mosliklar berardi, `_` esa istalgan belgiga mos kelardi.
+    """
+    return (
+        value.replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
+
+
 def query_words(query: str) -> list[str]:
     """So'rovni normallashtirib so'zlarga ajratadi.
 

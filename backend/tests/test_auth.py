@@ -234,6 +234,99 @@ class AuthTest(unittest.TestCase):
         self.client.cookies.set(auth_service.SESSION_COOKIE, "yolgon-token")
         self.assertIsNone(self.client.get("/api/auth/me").json()["user"])
 
+    def test_expired_and_excess_sessions_are_pruned(self) -> None:
+        """Muddati o'tganlar va foydalanuvchining ortiqcha sessiyalari o'chirilsin."""
+        from datetime import datetime, timedelta, timezone
+
+        user = self.make_user(subject="0000-0002-1825-0090")
+        with SessionLocal() as db:
+            stored = db.get(User, user.id)
+            for _ in range(auth_service.MAX_SESSIONS_PER_USER + 3):
+                auth_service.create_session(db, stored)
+            count = len(list(db.scalars(select(UserSession).where(UserSession.user_id == user.id))))
+            self.assertEqual(count, auth_service.MAX_SESSIONS_PER_USER)
+
+            expired = db.scalar(select(UserSession).where(UserSession.user_id == user.id))
+            expired.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+            db.commit()
+            auth_service.create_session(db, stored)
+            remaining = list(db.scalars(select(UserSession).where(UserSession.user_id == user.id)))
+            self.assertNotIn(expired.id, [item.id for item in remaining])
+
+    # --- CSRF ------------------------------------------------------------
+
+    def test_cross_site_mutation_with_cookie_is_rejected(self) -> None:
+        self.configure()
+        user = self.make_user(subject="0000-0002-1825-0091")
+        with SessionLocal() as db:
+            token = auth_service.create_session(db, db.get(User, user.id))
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        foreign = self.client.post("/api/auth/logout", headers={"Origin": "https://evil.example"})
+        self.assertEqual(foreign.status_code, 403)
+        fetch = self.client.post("/api/auth/logout", headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(fetch.status_code, 403)
+        # Sessiya hali tirik.
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        self.assertIsNotNone(self.client.get("/api/auth/me").json()["user"])
+        own = self.client.post("/api/auth/logout", headers={"Origin": "http://127.0.0.1:5173"})
+        self.assertEqual(own.status_code, 200)
+
+    def test_same_host_origin_is_accepted(self) -> None:
+        self.configure()
+        user = self.make_user(subject="0000-0002-1825-0092")
+        with SessionLocal() as db:
+            token = auth_service.create_session(db, db.get(User, user.id))
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        response = self.client.post(
+            "/api/auth/logout", headers={"Origin": "http://testserver", "Host": "testserver"}
+        )
+        self.assertEqual(response.status_code, 200)
+
+    # --- e-pochta va admin tayinlash ---------------------------------------
+
+    def test_unverified_google_email_is_not_stored(self) -> None:
+        """`grant-admin` pochta bo'yicha ishlaydi — tasdiqlanmagan pochta xavfli."""
+        import httpx
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def post(self, *args, **kwargs):
+                return httpx.Response(200, json={"access_token": "t"}, request=httpx.Request("POST", "https://x"))
+
+            def get(self, *args, **kwargs):
+                return httpx.Response(
+                    200,
+                    json={"sub": "g-1", "name": "G", "email": "someone@example.uz", "email_verified": False},
+                    request=httpx.Request("GET", "https://x"),
+                )
+
+        self.configure()
+        with patch.object(auth_service.httpx, "Client", FakeClient):
+            identity = auth_service.exchange_code("google", "code")
+        self.assertIsNone(identity.email)
+
+    def test_grant_admin_refuses_ambiguous_identifier(self) -> None:
+        with SessionLocal() as db:
+            for provider, subject in (("orcid", "0000-0002-1825-0093"), ("google", "g-dup")):
+                identity = auth_service.ProviderIdentity(
+                    subject=subject, display_name="X", email="dup@example.uz",
+                    orcid=subject if provider == "orcid" else None,
+                )
+                auth_service.upsert_user(db, provider, identity)
+            with self.assertRaises(ValueError):
+                auth_service.grant_admin(db, "dup@example.uz")
+            granted = auth_service.grant_admin(db, "0000-0002-1825-0093")
+            self.assertTrue(granted.is_admin)
+            auth_service.grant_admin(db, "0000-0002-1825-0093", revoke=True)
+
     def test_logout_revokes_the_session(self) -> None:
         user = self.make_user(subject="0000-0002-1825-0099")
         with SessionLocal() as db:

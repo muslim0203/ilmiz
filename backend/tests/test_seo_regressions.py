@@ -137,6 +137,15 @@ class SeoRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 301)
         self.assertEqual(response.headers["location"], "/maqolalar?sahifa=2")
 
+    def test_scheme_relative_path_is_not_an_open_redirect(self):
+        """`//evil.example/` → `Location: //evil.example` bo'lib chiqardi."""
+        # httpx nisbiy `//host` ni asosiy URL bilan almashtirib yuboradi,
+        # shuning uchun yo'l to'liq manzil ichida beriladi.
+        for path in ("//evil.example/", "//evil.example", "///evil.example/x/"):
+            response = self.client.get("http://testserver" + path, follow_redirects=False)
+            self.assertEqual(response.status_code, 404, path)
+            self.assertNotIn("location", response.headers, path)
+
     def test_index_html_is_not_a_duplicate_empty_spa(self):
         response = self.client.get("/index.html", follow_redirects=False)
         self.assertEqual(response.status_code, 301)

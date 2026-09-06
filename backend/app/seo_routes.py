@@ -182,20 +182,28 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
 @router.get("/sitemap-journals.xml")
 def sitemap_journals(db: Session = Depends(get_db)) -> StreamingResponse:
     def rows() -> Iterator[str]:
-        years: dict[int, list[int]] = {}
-        for journal_id, year in db.execute(
-            select(Article.journal_id, Article.publication_year)
+        # Har (jurnal, yil) uchun o'sha yil maqolalarining oxirgi o'zgarishi.
+        # Ilgari yil arxivlari jurnal qatorining `updated_at`ini olardi: OAK
+        # importi `journal.fields` ni yangilagan kuni 467 jurnalning barcha
+        # yillari "yangilangan" bo'lib chiqardi — Google bunday lastmod'ga
+        # ishonmay qo'yadi.
+        years: dict[int, list[tuple[int, datetime | None]]] = {}
+        latest: dict[int, datetime | None] = {}
+        for journal_id, year, changed in db.execute(
+            select(Article.journal_id, Article.publication_year, func.max(Article.updated_at))
             .where(Article.is_deleted.is_(False), Article.publication_year.is_not(None))
             .group_by(Article.journal_id, Article.publication_year)
         ):
-            years.setdefault(journal_id, []).append(year)
+            years.setdefault(journal_id, []).append((year, changed))
+            if changed is not None and (latest.get(journal_id) is None or changed > latest[journal_id]):
+                latest[journal_id] = changed
         for journal_id, slug, updated in db.execute(
             select(Journal.id, Journal.slug, Journal.updated_at).order_by(Journal.id)
         ):
-            lastmod = _iso(updated)
-            yield _url(seo.absolute(seo.journal_path(slug)), lastmod, "weekly", "0.8")
-            for year in sorted(years.get(journal_id, []), reverse=True):
-                yield _url(seo.absolute(seo.journal_year_path(slug, year)), lastmod, "monthly", "0.5")
+            newest = max((item for item in (updated, latest.get(journal_id)) if item is not None), default=None)
+            yield _url(seo.absolute(seo.journal_path(slug)), _iso(newest), "weekly", "0.8")
+            for year, changed in sorted(years.get(journal_id, []), reverse=True):
+                yield _url(seo.absolute(seo.journal_year_path(slug, year)), _iso(changed), "monthly", "0.5")
 
     return _stream(rows())
 
@@ -283,6 +291,11 @@ def page_metadata(response: Response, path: str = Query(max_length=2048), db: Se
 @router.get("/{full_path:path}")
 def shell(full_path: str, request: Request, db: Session = Depends(get_db)) -> Response:
     path = "/" + full_path
+    if full_path.startswith("/"):
+        # `GET //evil.example/` → `Location: //evil.example` bo‘lib chiqardi;
+        # brauzer sxema-nisbiy manzilni tashqi domenga o‘tkazadi (ochiq
+        # yo‘naltirish). `/api/seo` bunday yo‘lni allaqachon rad etadi.
+        return Response(status_code=404)
     if path == "/index.html":
         return RedirectResponse("/", status_code=301)
     static = _static_file(path)

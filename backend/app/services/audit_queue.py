@@ -9,8 +9,11 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from harvester import oai_harvester
+
 from ..db import SessionLocal
 from ..models import AuditJob, HarvestSource, Journal
+from . import netguard
 from .ingest import ACTIVE_SOURCE_STATUSES, audit_source
 
 USER_AGENT = "IlmIz-OAI-Discovery/0.2"
@@ -75,8 +78,11 @@ def endpoint_candidates(website: str) -> list[str]:
 def discovered_endpoint_candidates(website: str, *, timeout: int = 8) -> list[str]:
     candidates = endpoint_candidates(website)
     try:
+        # Sayt manzili OAK reestridan keladi — ichki manzil bo‘lsa olmaymiz;
+        # redirect'lar ham harvester'ning himoyalangan opener'i orqali o‘tadi.
+        netguard.assert_public_url(website)
         request = urllib.request.Request(website, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with oai_harvester._opener(None).open(request, timeout=timeout) as response:
             html = response.read(1_500_000).decode(response.headers.get_content_charset() or "utf-8", errors="replace")
         hrefs = re.findall(r'''href=["']([^"']+)["']''', html, flags=re.IGNORECASE)
         for href in hrefs:

@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from . import completeness
+from . import completeness, netguard
 from .text_clean import (
     BOILERPLATE_RE,
     MIN_PROSE_LENGTH,
@@ -209,18 +209,37 @@ def ojs_routes(website: str) -> dict[str, str]:
     }
 
 
+MAX_REDIRECTS = 5
+
+
+def fetch_public(url: str, *, timeout: float = 20.0) -> httpx.Response:
+    """URL'ni faqat ommaviy manzillar bo‘ylab oladi.
+
+    `follow_redirects=True` bilan httpx ichki manzilga redirect'ni ham
+    ergashardi — `http://jurnal.uz` → `http://127.0.0.1:8000/api/...`. Endi har
+    sakrash `netguard` dan o‘tadi.
+    """
+    current = netguard.assert_public_url(url)
+    with httpx.Client(timeout=timeout, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
+        for _ in range(MAX_REDIRECTS + 1):
+            response = client.get(current)
+            if not response.is_redirect:
+                response.raise_for_status()
+                return response
+            location = response.headers.get("location")
+            if not location:
+                response.raise_for_status()
+                return response
+            current = netguard.assert_public_url(urljoin(current, location))
+    raise httpx.TooManyRedirects(f"{MAX_REDIRECTS} dan ortiq redirect: {url}")
+
+
 def fetch_pages(website: str, timeout: float = 20.0) -> dict[str, ParsedPage]:
     pages: dict[str, ParsedPage] = {}
 
     def fetch_batch(items: list[tuple[str, str]]) -> None:
         def fetch_one(kind: str, url: str) -> tuple[str, ParsedPage]:
-            response = httpx.get(
-                url,
-                timeout=timeout,
-                follow_redirects=True,
-                headers={"User-Agent": USER_AGENT},
-            )
-            response.raise_for_status()
+            response = fetch_public(url, timeout=timeout)
             return kind, parse_page(str(response.url), decode_response(response))
 
         with ThreadPoolExecutor(max_workers=min(4, len(items) or 1)) as executor:

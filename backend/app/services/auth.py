@@ -229,10 +229,14 @@ def exchange_code(provider: str, code: str, *, timeout: int = 20) -> ProviderIde
         subject = str(data.get("sub") or "")
         if not subject:
             raise RuntimeError("Google javobida sub yo'q")
+        # Tasdiqlanmagan pochta saqlanmaydi: `grant-admin` pochta bo'yicha
+        # huquq beradi, tasdiqlanmagan pochta bilan begona odam o'sha
+        # manzilni "egallashi" mumkin edi.
+        email = data.get("email") if data.get("email_verified") is True else None
         return ProviderIdentity(
             subject=subject,
-            display_name=str(data.get("name") or data.get("email") or subject),
-            email=data.get("email"),
+            display_name=str(data.get("name") or email or subject),
+            email=email,
         )
 
 
@@ -266,8 +270,34 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+# Bir foydalanuvchida shuncha faol sessiyadan ortig'i (eng eskilari) o'chiriladi.
+MAX_SESSIONS_PER_USER = 10
+
+
+def _prune_sessions(db: Session, user: User) -> None:
+    """Muddati o'tganlarni va foydalanuvchining ortiqcha sessiyalarini o'chiradi.
+
+    Ilgari muddati o'tgan sessiya faqat o'sha token bilan qayta kelinganda
+    o'chirilardi — qaytmagan foydalanuvchilarniki abadiy qolardi, soni ham
+    cheklanmagan edi.
+    """
+    now = datetime.now(timezone.utc)
+    db.execute(delete(UserSession).where(UserSession.expires_at < now))
+    extra = list(
+        db.scalars(
+            select(UserSession.id)
+            .where(UserSession.user_id == user.id)
+            .order_by(UserSession.created_at.desc())
+            .offset(MAX_SESSIONS_PER_USER - 1)
+        )
+    )
+    if extra:
+        db.execute(delete(UserSession).where(UserSession.id.in_(extra)))
+
+
 def create_session(db: Session, user: User, *, user_agent: str | None = None) -> str:
     """Sessiya yaratadi va TOKENNI qaytaradi. Bazada faqat hash saqlanadi."""
+    _prune_sessions(db, user)
     token = secrets.token_urlsafe(48)
     db.add(
         UserSession(
@@ -312,9 +342,15 @@ def any_admin_exists(db: Session) -> bool:
 def grant_admin(db: Session, identifier: str, *, revoke: bool = False) -> User | None:
     """ORCID iD yoki e-pochta bo'yicha admin huquqini beradi/oladi."""
     needle = identifier.strip()
-    user = db.scalar(select(User).where(or_(User.orcid == needle, User.email == needle)))
-    if user is None:
+    matches = list(db.scalars(select(User).where(or_(User.orcid == needle, User.email == needle))))
+    if not matches:
         return None
+    if len(matches) > 1:
+        # `users.email` unique emas (ORCID va Google hisoblari bir pochtani
+        # ko'rsatishi mumkin); birinchisiga berish noto'g'ri odamga tushardi.
+        described = ", ".join(f"#{item.id} ({item.provider})" for item in matches)
+        raise ValueError(f"Bir nechta foydalanuvchi mos keladi: {described}. Aniq ORCID iD bering.")
+    user = matches[0]
     user.is_admin = not revoke
     db.commit()
     db.refresh(user)

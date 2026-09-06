@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
+/* Inter shrifti index.html dagi <link rel="stylesheet"> orqali keladi (preconnect bilan). */
 @import "tailwindcss";
 @import "tw-animate-css";
 

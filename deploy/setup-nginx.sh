@@ -26,6 +26,14 @@ CERTBOT_EMAIL=${CERTBOT_EMAIL:-info@ilmiz.uz}
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mXATO: %s\033[0m\n' "$*" >&2; exit 1; }
+# Mavjud konfiguratsiyani ustidan yozishdan oldin vaqt belgili nusxa.
+backup_conf() {
+  if [ -f /etc/nginx/sites-available/ilmiz ]; then
+    local copy="/etc/nginx/sites-available/ilmiz.bak-$(date +%Y%m%d-%H%M%S)"
+    cp -a /etc/nginx/sites-available/ilmiz "$copy"
+    echo "zaxira: $copy"
+  fi
+}
 
 [ "$(id -u)" -eq 0 ] || die "root kerak: sudo bash $0"
 [ -f "$FULL_CONF" ] || die "$FULL_CONF topilmadi — repo $REPO da emasmi?"
@@ -58,6 +66,7 @@ say "4/7 Vaqtinchalik 80-portli konfiguratsiya"
 # Sertifikat hali yo'q, shuning uchun to'liq konfiguratsiya `nginx -t` dan
 # o'tmaydi. Avval shu minimal variant qo'yiladi: ACME tekshiruvi o'tadi va
 # sayt HTTP orqali darrov javob bera boshlaydi.
+backup_conf
 cat > /etc/nginx/sites-available/ilmiz <<NGINX
 server {
     listen 80;
@@ -97,7 +106,7 @@ fi
 say "6/7 Sertifikat"
 if [ -f "$LIVE" ]; then
   echo "sertifikat allaqachon bor, yangilanishi tekshirilmoqda"
-  certbot renew --quiet || true
+  certbot renew --quiet || die "sertifikat yangilanmadi — 'certbot renew' chiqishini o'qing"
 else
   certbot certonly --non-interactive --agree-tos --email "$CERTBOT_EMAIL" \
     --webroot -w "$WEBROOT" -d "$DOMAIN" -d "$WWW"
@@ -105,6 +114,12 @@ fi
 [ -f "$LIVE" ] || die "sertifikat olinmadi — yuqoridagi certbot xabarini o'qing"
 
 say "7/7 To'liq konfiguratsiya (HTTPS)"
+# Mavjud (qo'lda o'zgartirilgan bo'lishi mumkin) konfiguratsiya zaxirasiz
+# ustidan yozilmasin.
+backup_conf
+install -d -m 755 /etc/nginx/snippets /etc/nginx/conf.d
+cp "$(dirname "$FULL_CONF")/nginx-ilmiz-headers.conf" /etc/nginx/snippets/ilmiz-headers.conf
+cp "$(dirname "$FULL_CONF")/nginx-ilmiz-ratelimit.conf" /etc/nginx/conf.d/ilmiz-ratelimit.conf
 cp "$FULL_CONF" /etc/nginx/sites-available/ilmiz
 nginx -t
 systemctl reload nginx

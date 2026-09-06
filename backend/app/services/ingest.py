@@ -12,10 +12,14 @@ from pathlib import Path
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from harvester import oai_harvester
 from harvester.oai_harvester import OAIError, OAIRecord, harvest, identify, list_metadata_formats, metadata_from_xml
 
-from . import seo
+from . import netguard, seo
 from .search_text import article_search_text
+
+# Harvester har so‘rov va redirect'da manzilni tekshirsin (SSRF).
+oai_harvester.URL_GUARD = netguard.assert_public_url
 
 from ..db import SessionLocal
 from ..models import Article, HarvestRun, HarvestSource, Journal, SourceRecord
@@ -204,6 +208,8 @@ def audit_source(
         raise OAIError(
             f"Bu OAI endpoint allaqachon boshqa jurnalga biriktirilgan: {taken.journal.name}"
         )
+    # Ichki manzil (127.0.0.1, 10.x, metadata) bo‘lsa manba yaratilmasin ham.
+    netguard.assert_public_url(base_url)
     source = db.scalar(
         select(HarvestSource).where(
             HarvestSource.journal_id == journal.id,

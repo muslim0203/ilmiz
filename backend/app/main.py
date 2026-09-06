@@ -34,9 +34,10 @@ from .services import auth as auth_service
 from .services import authorship
 from .services import journal_edit
 from .services import search_index
-from .services.search_text import query_words
+from .services.search_text import LIKE_ESCAPE, escape_like, query_words
 from .services.citations import citation_formats
 from .services.ingest import audit_source, ingest_source
+from harvester.oai_harvester import OAIError
 from .services.profile_collector import collect_profile
 from .services.profile_queue import enqueue_profiles, process_profile_jobs, profile_queue_stats, profile_stats
 logger = logging.getLogger(__name__)
@@ -62,9 +63,28 @@ app = FastAPI(
 # Sitemap 25 000 URL, SEO qobig'i esa to'liq annotatsiya bilan ketadi —
 # siqilmasa TTFB va Core Web Vitals'ga urib ketadi.
 app.add_middleware(GZipMiddleware, minimum_size=800)
+
+DEV_CORS_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173"]
+
+
+def cors_origins() -> list[str]:
+    """Ruxsat etilgan CORS originlari.
+
+    `ILMIZ_CORS_ORIGINS` (vergul bilan) berilsa faqat o‘sha. Aks holda
+    prod'da (`ILMIZ_PUBLIC_URL` https) ro‘yxat bo‘sh — sayt bir originda;
+    dev'da Vite portlari. Ilgari dev originlari prod'da ham ochiq edi.
+    """
+    raw = os.getenv("ILMIZ_CORS_ORIGINS")
+    if raw is not None:
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    if auth_service.public_base_url().startswith("https://"):
+        return []
+    return DEV_CORS_ORIGINS
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=cors_origins(),
     allow_methods=["*"],
     # Frontend sahifalash uchun umumiy sonni shu header'dan o'qiydi.
     allow_headers=["*"],
@@ -84,7 +104,32 @@ def _token_matches(authorization: str | None, x_admin_token: str | None) -> bool
     provided = x_admin_token
     if not provided and authorization and authorization.lower().startswith("bearer "):
         provided = authorization[7:]
-    return bool(provided) and secrets.compare_digest(provided.strip(), expected)
+    if not provided:
+        return False
+    # `compare_digest` `str` uchun faqat ASCII qabul qiladi — kirillcha header
+    # `TypeError` bilan 500 berardi. Baytlar bilan har qanday matn taqqoslanadi.
+    return secrets.compare_digest(provided.strip().encode("utf-8"), expected.encode("utf-8"))
+
+
+def _same_site_request(request: Request) -> bool:
+    """So‘rov o‘z saytimizdan kelganmi (CSRF).
+
+    Brauzer `Origin` (yoki hech bo‘lmasa `Sec-Fetch-Site`) yuboradi. Origin
+    `ILMIZ_PUBLIC_URL` ga yoki so‘rovning o‘z `Host` iga mos kelsa — o‘zimizniki.
+    Ikkalasi ham yo‘q (curl, testlar, eski brauzer) — `SameSite=Lax` cookie
+    o‘zi himoya qiladi, o‘tkazamiz.
+    """
+    origin = request.headers.get("origin")
+    if origin:
+        if origin.rstrip("/") == auth_service.public_base_url():
+            return True
+        host = request.headers.get("host", "")
+        origin_host = origin.split("://", 1)[-1].rstrip("/")
+        return bool(host) and origin_host.casefold() == host.casefold()
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site:
+        return fetch_site in {"same-origin", "none"}
+    return True
 
 
 def check_admin_access(
@@ -105,6 +150,9 @@ def check_admin_access(
     if user is not None and user.is_admin:
         return
     if _token_matches(authorization, x_admin_token):
+        # Token muddatsiz va auditsiz bearer — har ishlatilishi logda qolsin,
+        # shunda oqib ketgan token sezilmay qolmaydi.
+        logger.warning("Admin API'ga ILMIZ_ADMIN_TOKEN bilan kirildi")
         return
     if not admin_token() and not auth_service.any_admin_exists(db):
         raise HTTPException(
@@ -129,6 +177,27 @@ def require_admin(
         x_admin_token=x_admin_token,
         session_token=request.cookies.get(auth_service.SESSION_COOKIE),
     )
+
+
+MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """Cookie bilan kelgan o‘zgartiruvchi so‘rovlar faqat o‘z saytdan.
+
+    Sessiya cookie'si `SameSite=Lax`; bu qatlam subdomen XSS yoki eski
+    brauzer holatida ikkinchi to‘siq. Cookie'siz so‘rovlar (admin token,
+    ommaviy GET'lar) tegmaydi.
+    """
+    if (
+        request.method in MUTATING_METHODS
+        and request.url.path.startswith("/api/")
+        and request.cookies.get(auth_service.SESSION_COOKIE)
+        and not _same_site_request(request)
+    ):
+        return JSONResponse(status_code=403, content={"detail": "So‘rov boshqa saytdan kelgan (CSRF)."})
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -435,7 +504,7 @@ def text_search_filter(query: str, columns: list):
         if len(needle) < 2:
             continue
         variants = [
-            column.ilike(f"%{form}%")
+            column.ilike(f"%{escape_like(form)}%", escape=LIKE_ESCAPE)
             for form in _search_forms(needle)
             for column in columns
         ]
@@ -652,7 +721,9 @@ def list_articles(
             statement = search_index.apply(statement, expression)
         else:
             for word in query_words(q):
-                statement = statement.where(Article.search_text.like(f"%{word}%"))
+                statement = statement.where(
+                    Article.search_text.like(f"%{escape_like(word)}%", escape=LIKE_ESCAPE)
+                )
     if journal_slug:
         statement = statement.join(Article.journal).where(Journal.slug == journal_slug)
     if year:
@@ -826,6 +897,18 @@ def process_queued_profiles(input: ProfileProcessInput, db: Session = Depends(ge
     return process_profile_jobs(db, limit=input.limit, workers=input.workers)
 
 
+def _admin_error(error: Exception) -> HTTPException:
+    """Admin amali xatosi: kutilgan xatolar matni bilan, qolgani umumiy xabar.
+
+    `str(error)` httpx/SSL/SQLAlchemy xabarlarini (ichki yo‘llar, URL'lar)
+    to‘g‘ridan-to‘g‘ri mijozga chiqarardi; ular endi faqat logga tushadi.
+    """
+    logger.exception("Admin amali yiqildi: %s", type(error).__name__)
+    if isinstance(error, (OAIError, ValueError, journal_edit.ValidationError)):
+        return HTTPException(status_code=422, detail=str(error))
+    return HTTPException(status_code=422, detail="Amal bajarilmadi; batafsil sabab server logida.")
+
+
 @admin.post("/sources/audit")
 def audit(input: SourceInput, db: Session = Depends(get_db)) -> dict[str, object]:
     journal = db.scalar(select(Journal).where(Journal.slug == input.journal_slug))
@@ -834,7 +917,7 @@ def audit(input: SourceInput, db: Session = Depends(get_db)) -> dict[str, object
     try:
         source = audit_source(db, journal, str(input.base_url))
     except Exception as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise _admin_error(error) from error
     return {"id": source.id, "status": source.status, "repositoryName": source.repository_name, "formats": source.available_formats}
 
 
@@ -853,11 +936,11 @@ def run_harvest(input: HarvestInput, db: Session = Depends(get_db)) -> dict[str,
         try:
             source = audit_source(db, journal, str(input.base_url))
         except Exception as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
+            raise _admin_error(error) from error
     try:
         run = ingest_source(db, source, from_date=input.from_date, page_limit=input.page_limit)
     except Exception as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise _admin_error(error) from error
     return {
         "runId": run.id,
         "status": run.status,
@@ -894,10 +977,14 @@ class JournalEditInput(BaseModel):
 
 @admin.get("/journals")
 def admin_journals(
-    q: str | None = None, limit: int = 30, db: Session = Depends(get_db)
+    q: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
 ) -> dict[str, object]:
     """Tahrirlash uchun jurnal qidirish."""
-    statement = select(Journal).order_by(Journal.name).limit(min(limit, 100))
+    # Manfiy `limit` SQLite'da "cheksiz" degani edi — butun jadval + har
+    # jurnal uchun `manually_edited` so‘rovi.
+    statement = select(Journal).order_by(Journal.name).limit(limit)
     if q and q.strip():
         conditions = text_search_filter(q.strip(), [Journal.name, Journal.publisher, Journal.issn])
         for condition in conditions:
@@ -1003,7 +1090,7 @@ def collect_journal_profile(input: ProfileCollectInput, db: Session = Depends(ge
     try:
         profile = collect_profile(db, journal)
     except Exception as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        raise _admin_error(error) from error
     return {
         "journalSlug": journal.slug,
         "status": "collected",

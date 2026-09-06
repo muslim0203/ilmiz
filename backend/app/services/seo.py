@@ -21,15 +21,24 @@ from dataclasses import dataclass, field as dataclass_field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import Article, Journal
+from ..models import Article, Journal, OakRegistryEntry
 from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
+from .translit import alternate_names
 
 SITE_NAME = "IlmIz"
 SITE_TAGLINE = "O‘zbekiston OAK jurnallari va ilmiy maqolalar indeksi"
 DEFAULT_SITE_URL = "http://127.0.0.1:8000"
 DEFAULT_LOCALE = "uz_UZ"
 DEFAULT_LANG = "uz"
+LOCALES = {"uz": "uz_UZ", "ru": "ru_RU", "en": "en_US", "kaa": "kaa_UZ", "kk": "kk_KZ"}
+
+# OAK importi har jurnalga yozadigan bo'sh tavsif. Yuzlab sahifada bir xil
+# meta description bo'lib chiqardi — Google uni tashlab, o'zi snippet yasaydi.
+OAK_PLACEHOLDER = "OAK rasmiy elektron reestridan import qilingan jurnal."
+# Jurnal sahifasi <title> chegarasi: nom hech qachon kesilmaydi, faqat
+# qo'shimcha ("OAK jurnali, ISSN …") sig'masa tushib qoladi.
+JOURNAL_TITLE_LIMIT = 70
 
 # Robotlarga to'liq snippet va katta rasm ruxsati: qisqartirilgan snippet
 # CTR'ni pasaytiradi, Yandex esa `max-snippet` ni ham hisobga oladi.
@@ -233,6 +242,8 @@ class PageMeta:
     redirect: str | None = None
     published_time: str | None = None
     modified_time: str | None = None
+    # Sahifaning asosiy tili: <html lang>, hreflang va og:locale shundan.
+    lang: str = DEFAULT_LANG
 
     @property
     def canonical(self) -> str:
@@ -467,6 +478,7 @@ def _site_jsonld() -> list[dict]:
             "name": SITE_NAME,
             "url": absolute("/"),
             "description": SITE_TAGLINE,
+            "logo": {"@type": "ImageObject", "url": absolute("/icon-512.png"), "width": 512, "height": 512},
             "areaServed": {"@type": "Country", "name": "O‘zbekiston"},
         },
     ]
@@ -478,7 +490,7 @@ def _home(db: Session) -> PageMeta:
     journals, articles = _stats(db)
     counts = _counts(db)
     top = db.scalars(
-        select(Journal).where(Journal.id.in_([id for id, _ in sorted(counts.items(), key=lambda row: -row[1])[:20]]))
+        select(Journal).where(Journal.id.in_([id for id, _ in sorted(counts.items(), key=lambda row: -row[1])[:24]]))
     ).all()
     top.sort(key=lambda journal: -counts.get(journal.id, 0))
     latest = db.scalars(
@@ -501,11 +513,13 @@ def _home(db: Session) -> PageMeta:
         f'<a href="/sohalar">Ilmiy sohalar</a> · '
         f'<a href="/shaharlar">Shaharlar</a></p>'
         f'<h2>Eng ko‘p maqolali OAK jurnallari</h2>'
-        f'<ul class="seo-list">{"".join(_journal_item(item, counts.get(item.id, 0)) for item in top[:12])}</ul>'
+        f'<ul class="seo-list">{"".join(_journal_item(item, counts.get(item.id, 0)) for item in top[:24])}</ul>'
         f'<h2>So‘nggi qo‘shilgan maqolalar</h2>'
         f'<ul class="seo-list">{"".join(_article_item(item) for item in latest)}</ul>'
         f'<h2>Ilmiy sohalar bo‘yicha</h2>'
         + _chips([(name, field_path(name)) for name in all_fields()])
+        + '<h2>Shaharlar bo‘yicha</h2>'
+        + _chips([(name, city_path(name)) for name in cities(db)])
     )
     return PageMeta(
         title=f"{SITE_NAME} — {SITE_TAGLINE}",
@@ -606,9 +620,101 @@ def _journal_list(db: Session, page: int, *, field: str | None = None, city: str
     )
 
 
+def journal_description(journal: Journal) -> str | None:
+    """Haqiqiy tavsif: profil xulosasi yoki tahrirlangan tavsif; OAK placeholder emas."""
+    profile = journal.profile
+    for candidate in ((profile.summary if profile else None), journal.description):
+        text = (candidate or "").strip()
+        if text and text != OAK_PLACEHOLDER:
+            return text
+    return None
+
+
+def journal_title(name: str, issn: str | None, *, suffix: str = "") -> str:
+    """Jurnal nomi to'liq qoladi — u aynan foydalanuvchi qidiradigan so'rov.
+
+    Ilgari nom 46 belgida kesilardi ("Scientific Journal of Science, Research
+    and…"), ya'ni sahifa o'z nomi bo'yicha so'rovga to'liq mos kelmasdi.
+    """
+    base = f"{name} — OAK jurnali"
+    with_issn = f"{base}, ISSN {issn}" if issn else base
+    if len(with_issn) + len(suffix) <= JOURNAL_TITLE_LIMIT:
+        return with_issn + suffix
+    if len(base) + len(suffix) <= JOURNAL_TITLE_LIMIT:
+        return base + suffix
+    return name + suffix
+
+
+def _journal_lang(journal: Journal) -> str:
+    """Jurnalning birinchi tili; ruscha nomli tilsiz jurnal — `ru`."""
+    for item in journal.languages or []:
+        return language_code(item)
+    from .translit import has_cyrillic, looks_russian
+
+    if has_cyrillic(journal.name) and looks_russian(journal.name):
+        return "ru"
+    return DEFAULT_LANG
+
+
+def _registry_rows(db: Session, journal: Journal) -> list[OakRegistryEntry]:
+    """Jurnalning OAK reestri yozuvlari (ixtisoslik/qaror bo'yicha takrorsiz)."""
+    rows = db.scalars(
+        select(OakRegistryEntry)
+        .where(OakRegistryEntry.journal_id == journal.id)
+        .order_by(OakRegistryEntry.year.desc(), OakRegistryEntry.id.desc())
+    ).all()
+    seen: set[tuple[str | None, str | None, str | None]] = set()
+    unique: list[OakRegistryEntry] = []
+    for row in rows:
+        key = (row.specialty_code, row.decision, row.status)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique[:12]
+
+
+def _similar_journals(db: Session, journal: Journal, limit: int = 6) -> list[tuple[Journal, int]]:
+    """Shu sohadagi (bo'lmasa shu shahardagi) eng faol jurnallar — ichki bog'lanish."""
+    counts = _counts(db)
+    candidates = db.scalars(
+        select(Journal).where(Journal.id != journal.id, Journal.oak_status == "active")
+    ).all()
+    wanted = set(journal.fields or [])
+    city = canonical_city(journal.city)
+    ranked = sorted(
+        candidates,
+        key=lambda item: (
+            -len(wanted & set(item.fields or [])),
+            0 if canonical_city(item.city) == city else 1,
+            -counts.get(item.id, 0),
+            item.name,
+        ),
+    )
+    chosen = [item for item in ranked if (wanted & set(item.fields or [])) or canonical_city(item.city) == city]
+    return [(item, counts.get(item.id, 0)) for item in chosen[:limit]]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: dict[str, None] = {}
+    for value in values:
+        text = (value or "").strip()
+        if text:
+            seen.setdefault(text, None)
+    return list(seen)
+
+
 def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1) -> PageMeta:
     journal = db.scalar(
-        select(Journal).where(Journal.slug == slug).options(selectinload(Journal.profile))
+        select(Journal).where(Journal.slug == slug).options(
+            selectinload(Journal.profile),
+            selectinload(Journal.contacts),
+            selectinload(Journal.editorial_members),
+            selectinload(Journal.policies),
+            selectinload(Journal.sections),
+            selectinload(Journal.indexing_claims),
+            selectinload(Journal.links),
+        )
     )
     if journal is None:
         return _not_found(f"/jurnal/{slug}")
@@ -618,15 +724,16 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
             Article.journal_id == journal.id, Article.is_deleted.is_(False)
         )
     ) or 0
-    years = [
-        row[0] for row in db.execute(
-            select(Article.publication_year)
+    year_counts = [
+        (row[0], row[1]) for row in db.execute(
+            select(Article.publication_year, func.count())
             .where(Article.journal_id == journal.id, Article.is_deleted.is_(False),
                    Article.publication_year.is_not(None))
             .group_by(Article.publication_year)
             .order_by(Article.publication_year.desc())
         )
     ]
+    years = [item for item, _ in year_counts]
     article_query = (
         select(Article)
         .options(selectinload(Article.journal))
@@ -644,75 +751,221 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
     city = canonical_city(journal.city)
     issn = journal.issn or journal.eissn or ""
     profile = journal.profile
-    summary = clip((profile.summary if profile else None) or journal.description, 400)
+    summary_full = journal_description(journal)
+    summary = clip(summary_full, 400)
+    aliases = alternate_names(journal.name, journal.languages)
+    fields = list(journal.fields or [])
+    registry = _registry_rows(db, journal)
+    active = journal.oak_status == "active"
+    # Eng so'nggi "qo'shildi/aktiv" yozuvi — qaror raqami va sanasi uchun.
+    decision = next((row for row in registry if row.decision), None)
+    span = f"{years[-1]}–{years[0]}" if len(years) > 1 else (str(years[0]) if years else "")
 
+    page_suffix = f" — {page}-sahifa" if page > 1 else ""
     if year:
         path = journal_year_path(slug, year)
         heading = f"{journal.name} — {year}-yil maqolalari"
-        title = f"{clip(journal.name, 42)} — {year}-yil maqolalari"
+        title = f"{journal.name} — {year}-yil maqolalari{page_suffix}"
         description = (
-            f"{journal.name} jurnalining {year}-yilda chop etilgan ilmiy maqolalari: "
+            f"{journal.name} jurnalining {year}-yilda chop etilgan {selected_total} ta ilmiy maqolasi: "
             "muallif, annotatsiya, DOI va tayyor iqtibos."
         )
     else:
         path = journal_path(slug)
         heading = journal.name
-        title = f"{clip(journal.name, 46)} — OAK jurnali" + (f", ISSN {issn}" if issn else "")
-        description = summary or (
-            f"{journal.name} — {city} shahrida {journal.publisher} nashr etadigan OAK "
-            f"ro‘yxatidagi ilmiy jurnal. Indeksda {total} ta maqola."
-        )
+        title = journal_title(journal.name, issn, suffix=page_suffix)
+        fallback_bits = [
+            f"{journal.name}" + (f" ({aliases[0]})" if aliases else ""),
+            f"{journal.publisher} nashr etadigan" if journal.publisher else "",
+            "OAK ro‘yxatidagi ilmiy jurnal" if active else "OAK ro‘yxatidan chiqarilgan ilmiy jurnal",
+        ]
+        fallback = " ".join(bit for bit in fallback_bits if bit) + "."
+        extras = []
+        if issn:
+            extras.append(f"ISSN {issn}")
+        if fields:
+            extras.append("Sohalar: " + ", ".join(fields[:4]))
+        if total:
+            extras.append(f"{total} ta maqola" + (f" ({span})" if span else ""))
+        if extras:
+            fallback += " " + ". ".join(extras) + "."
+        description = summary or fallback
 
     crumbs = [("Bosh sahifa", "/"), ("Jurnallar", "/jurnallar"), (clip(journal.name, 60), journal_path(slug))]
     if year:
         crumbs.append((str(year), path))
     if page > 1:
         path += f"?sahifa={page}"
-        heading += f" — {page}-sahifa"
-        title += f" — {page}-sahifa"
+        heading += page_suffix
 
+    emails = _dedupe([item.value for item in journal.contacts if item.kind == "email"])[:4]
+    phones = _dedupe([item.value for item in journal.contacts if item.kind == "phone"])[:3]
+    addresses = _dedupe(
+        [item.value for item in journal.contacts if item.kind == "address"]
+        + ([profile.address] if profile and profile.address else [])
+    )[:1]
+    kinds = _dedupe([row.kind for row in registry])
     facts = [
         ("Nashriyot", journal.publisher),
         ("Shahar", city),
         ("ISSN", journal.issn),
         ("e-ISSN", journal.eissn),
+        ("Boshqa yozuvda", ", ".join(aliases)),
         ("Tashkil etilgan", journal.founded),
         ("Nashr tillari", ", ".join(journal.languages or [])),
         ("Nashr davriyligi", profile.publication_frequency if profile else None),
-        ("Maqolalar soni", total),
-        ("OAK holati", "Ro‘yxatda" if journal.oak_status == "active" else "Ro‘yxatdan chiqarilgan"),
+        ("Ilmiy sohalari", ", ".join(fields)),
+        ("OAK ixtisoslik kodi", ", ".join(_dedupe([f"{row.specialty_code} ({row.area})" if row.area else (row.specialty_code or "") for row in registry]))),
+        ("OAK qarori", f"№{decision.decision}" + (f", {decision.added}" if decision.added else "") if decision else None),
+        ("Jurnal turi", ", ".join(kinds)),
+        ("OAK holati", "Ro‘yxatda" if active else "Ro‘yxatdan chiqarilgan"),
+        ("Maqolalar indeksda", f"{total}" + (f" ({span})" if span else "") if total else None),
+        ("Ochiq kirish", {"open": "Ha", "mixed": "Qisman"}.get(journal.access)),
+        ("Indekslash", ", ".join(_dedupe([item.provider for item in journal.indexing_claims]))),
     ]
     facts_html = "".join(
         f"<tr><th>{e(label)}</th><td>{e(value)}</td></tr>" for label, value in facts if value
     )
     website = web_url(journal.website)
+    # Rasmiy sayt — tekshirilgan manba, `nofollow` entity bog'lanishini kuchsizlantiradi.
     site_link = (
-        f'<p><a href="{e(website)}" rel="nofollow noopener" target="_blank">'
-        "Jurnalning rasmiy sayti</a></p>" if website else ""
+        f'<p><a href="{e(website)}" rel="noopener" target="_blank">'
+        f"{e(journal.name)} — rasmiy sayti</a></p>" if website else ""
     )
 
     parts = [
         _crumbs(crumbs),
         f"<h1>{e(heading)}</h1>",
     ]
-    if summary and not year:
-        parts.append(f'<p class="seo-lead">{e(summary)}</p>')
+    if not year:
+        if summary:
+            parts.append(f'<p class="seo-lead">{e(summary)}</p>')
+        else:
+            parts.append(f'<p class="seo-lead">{e(description)}</p>')
+        if aliases:
+            parts.append(f'<p class="seo-alias">Boshqa yozuvda: {e(", ".join(aliases))}</p>')
     parts.append(
         f'<table class="seo-facts"><caption>Jurnal ma’lumotlari</caption><tbody>{facts_html}</tbody></table>'
     )
     parts.append(site_link)
+
+    if not year:
+        aims = (profile.aims_scope if profile else None) or ""
+        if aims and aims.strip() != summary_full:
+            parts.append("<h2>Maqsad va yo‘nalish</h2>")
+            parts.append(f"<p>{e(clip(aims, 1200))}</p>")
+        review = (profile.peer_review if profile else None) or ""
+        if review:
+            parts.append("<h2>Taqriz tartibi</h2>")
+            parts.append(f"<p>{e(clip(review, 800))}</p>")
+        if journal.sections:
+            parts.append("<h2>Jurnal bo‘limlari</h2>")
+            parts.append(
+                "<ul>" + "".join(f"<li>{e(item.name)}</li>" for item in journal.sections[:20]) + "</ul>"
+            )
+        if journal.editorial_members:
+            parts.append("<h2>Tahririyat</h2>")
+            members = []
+            for member in journal.editorial_members[:20]:
+                detail = " — ".join(bit for bit in [member.role, member.affiliation] if bit)
+                members.append(f"<li>{e(member.name)}" + (f" <span class=\"seo-item-meta\">{e(detail)}</span>" if detail else "") + "</li>")
+            parts.append("<ul>" + "".join(members) + "</ul>")
+        if registry:
+            parts.append("<h2>OAK reestri yozuvlari</h2>")
+            rows_html = "".join(
+                "<tr>"
+                f"<td>{e(row.specialty_code)}</td><td>{e(row.area)}</td>"
+                f"<td>{e(('№' + row.decision) if row.decision else '')}</td>"
+                f"<td>{e(row.added)}</td><td>{e(row.status)}</td><td>{e(row.kind)}</td>"
+                "</tr>"
+                for row in registry
+            )
+            parts.append(
+                '<table class="seo-facts seo-registry"><thead><tr><th>Ixtisoslik</th><th>Soha</th>'
+                "<th>Qaror</th><th>Sana</th><th>Holati</th><th>Turi</th></tr></thead>"
+                f"<tbody>{rows_html}</tbody></table>"
+            )
+        if journal.policies:
+            parts.append("<h2>Nashr siyosati</h2>")
+            items = []
+            for policy in journal.policies[:8]:
+                url = web_url(policy.url)
+                label = e(policy.title)
+                items.append(
+                    f'<li><a href="{e(url)}" rel="noopener" target="_blank">{label}</a></li>' if url else f"<li>{label}</li>"
+                )
+            parts.append("<ul>" + "".join(items) + "</ul>")
+        if emails or phones or addresses:
+            parts.append("<h2>Aloqa</h2>")
+            contact_rows = []
+            for value in emails:
+                contact_rows.append(f'<tr><th>E-pochta</th><td><a href="mailto:{e(value)}">{e(value)}</a></td></tr>')
+            for value in phones:
+                contact_rows.append(f"<tr><th>Telefon</th><td>{e(value)}</td></tr>")
+            for value in addresses:
+                contact_rows.append(f"<tr><th>Manzil</th><td>{e(value)}</td></tr>")
+            parts.append(f'<table class="seo-facts"><tbody>{"".join(contact_rows)}</tbody></table>')
+        useful = [
+            (label, web_url(item.url))
+            for item in journal.links
+            for label in [{"submission": "Maqola topshirish", "archive": "Arxiv", "editorial": "Tahririyat",
+                           "contact": "Aloqa", "website": "Rasmiy sayt"}.get(item.kind)]
+            if label and web_url(item.url)
+        ]
+        seen_labels: dict[str, str] = {}
+        for label, url in useful:
+            seen_labels.setdefault(label, url)
+        if seen_labels:
+            parts.append("<h2>Foydali havolalar</h2>")
+            parts.append(
+                "<ul>" + "".join(
+                    f'<li><a href="{e(url)}" rel="noopener" target="_blank">{e(label)}</a></li>'
+                    for label, url in seen_labels.items()
+                ) + "</ul>"
+            )
+
     if years and not year:
         parts.append("<h2>Yillar bo‘yicha arxiv</h2>")
-        parts.append(_chips([(f"{item}-yil", journal_year_path(slug, item)) for item in years]))
+        parts.append(_chips([(f"{item}-yil ({count})", journal_year_path(slug, item)) for item, count in year_counts]))
     parts.append(f"<h2>{'Maqolalar' if year else 'So‘nggi maqolalar'}</h2>")
     parts.append(
         f'<ul class="seo-list">{"".join(_article_item(item) for item in articles)}</ul>'
         if articles else "<p>Bu jurnal uchun maqolalar hali indekslanmagan.</p>"
     )
-    if journal.fields:
-        parts.append("<h2>Ilmiy sohalari</h2>")
-        parts.append(_chips([(name, field_path(name)) for name in journal.fields]))
     parts.append(_pagination(base, page, selected_total, ARTICLES_PER_PAGE))
+    if fields:
+        parts.append("<h2>Ilmiy sohalari</h2>")
+        parts.append(_chips([(name, field_path(name)) for name in fields]))
+
+    if not year:
+        similar = _similar_journals(db, journal)
+        if similar:
+            parts.append("<h2>Shu sohadagi boshqa OAK jurnallari</h2>")
+            parts.append(f'<ul class="seo-list">{"".join(_journal_item(item, count) for item, count in similar)}</ul>')
+        faq: list[tuple[str, str]] = []
+        if active:
+            answer = f"Ha. {journal.name} O‘zbekiston Oliy attestatsiya komissiyasi (OAK) ro‘yxatidagi ilmiy jurnal"
+            if decision and decision.decision:
+                answer += f" — {decision.decision}-sonli qaror" + (f" ({decision.added})" if decision.added else "")
+            if registry and registry[0].area:
+                answer += f", ixtisoslik: {registry[0].specialty_code} {registry[0].area}"
+            faq.append((f"{journal.name} OAK ro‘yxatida bormi?", answer + "."))
+        else:
+            faq.append((f"{journal.name} OAK ro‘yxatida bormi?", f"Yo‘q. {journal.name} hozirda OAK ro‘yxatidan chiqarilgan."))
+        if issn:
+            faq.append((f"{journal.name} ISSN raqami qanday?", f"ISSN {journal.issn or '—'}" + (f", e-ISSN {journal.eissn}" if journal.eissn else "") + "."))
+        if journal.publisher:
+            faq.append((f"{journal.name} jurnalini kim nashr etadi?", f"{journal.publisher}" + (f" ({city})" if city else "") + "."))
+        if fields:
+            faq.append((f"{journal.name} qaysi sohalar bo‘yicha maqola qabul qiladi?", "Sohalar: " + ", ".join(fields) + "."))
+        if website or emails:
+            how = f"Maqola jurnalning rasmiy sayti orqali topshiriladi: {website}" if website else "Tahririyat bilan bog‘laning"
+            if emails:
+                how += f". E-pochta: {', '.join(emails[:2])}"
+            faq.append((f"{journal.name} jurnaliga maqola qanday topshiriladi?", how + "."))
+        if faq:
+            parts.append("<h2>Ko‘p so‘raladigan savollar</h2>")
+            parts.append("".join(f"<h3>{e(q)}</h3><p>{e(a)}</p>" for q, a in faq))
     if city:
         parts.append(f'<p><a href="{e(city_path(city))}">{e(city)} shahridagi boshqa jurnallar</a></p>')
 
@@ -722,19 +975,39 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         "name": journal.name,
         "url": absolute(journal_path(slug)),
         "inLanguage": [language_code(item) for item in (journal.languages or ["O‘zbek"])],
-        "publisher": {"@type": "Organization", "name": journal.publisher},
+        "publisher": {"@type": "Organization", "name": journal.publisher, **({"url": website} if website else {})},
     }
+    if aliases:
+        periodical["alternateName"] = aliases
     identifiers = [item for item in (journal.issn, journal.eissn) if item]
     if identifiers:
         periodical["issn"] = identifiers
-    if website:
-        periodical["sameAs"] = website
+        periodical["identifier"] = [
+            {"@type": "PropertyValue", "propertyID": "ISSN", "value": item} for item in identifiers
+        ]
+    same_as = _dedupe(
+        ([website] if website else [])
+        + [f"https://portal.issn.org/resource/ISSN/{item}" for item in identifiers]
+        + [row.link for row in registry if web_url(row.link)]
+        + [item.url for item in journal.links if item.kind == "website" and web_url(item.url)]
+    )
+    if same_as:
+        periodical["sameAs"] = same_as if len(same_as) > 1 else same_as[0]
     if summary:
         periodical["description"] = summary
     if journal.founded:
         periodical["foundingDate"] = str(journal.founded)
-    if journal.fields:
-        periodical["about"] = [{"@type": "Thing", "name": name} for name in journal.fields]
+    if fields:
+        periodical["about"] = [{"@type": "Thing", "name": name} for name in fields]
+    if journal.editorial_members:
+        periodical["editor"] = [
+            {"@type": "Person", "name": member.name, **({"jobTitle": member.role} if member.role else {})}
+            for member in journal.editorial_members[:10]
+        ]
+    if emails:
+        periodical["contactPoint"] = {"@type": "ContactPoint", "email": emails[0], "contactType": "editorial office"}
+    if addresses:
+        periodical["address"] = addresses[0]
 
     jsonld: list[dict] = [periodical, _breadcrumbs(crumbs)]
     if articles:
@@ -743,18 +1016,19 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         )
 
     head = [f'<meta name="citation_journal_title" content="{e(journal.name)}">']
-    if journal.issn:
-        head.append(f'<meta name="citation_issn" content="{e(journal.issn)}">')
+    if issn:
+        head.append(f'<meta name="citation_issn" content="{e(issn)}">')
     head.append(f'<meta name="citation_publisher" content="{e(journal.publisher)}">')
 
     return PageMeta(
-        title=clip(title, 65),
+        title=title if not year else clip(title, 90),
         description=clip(description, 158),
         path=path,
         body="".join(parts),
         modified_time=journal.updated_at.isoformat() if journal.updated_at else None,
         jsonld=jsonld,
         head=head,
+        lang=_journal_lang(journal),
     )
 
 
@@ -1090,7 +1364,7 @@ def _search_page(db: Session, query: str) -> PageMeta:
     """Qidiruv natijalari indekslanmaydi — cheksiz ko‘p va sifatsiz URL beradi."""
     articles = []
     if query.strip():
-        from .search_text import query_words
+        from .search_text import LIKE_ESCAPE, escape_like, query_words
 
         statement = (
             select(Article)
@@ -1099,7 +1373,9 @@ def _search_page(db: Session, query: str) -> PageMeta:
             .order_by(Article.publication_year.desc(), Article.id.desc())
         )
         for word in query_words(query):
-            statement = statement.where(Article.search_text.like(f"%{word}%"))
+            statement = statement.where(
+                Article.search_text.like(f"%{escape_like(word)}%", escape=LIKE_ESCAPE)
+            )
         articles = db.scalars(statement.limit(20)).all()
 
     heading = f"{e(query)} — qidiruv natijalari" if query else "Qidiruv"
@@ -1336,6 +1612,10 @@ font:400 16px/1.65 ui-sans-serif,system-ui,'Segoe UI',sans-serif;color:#18181b}
 #root .seo-shell a{color:#2563eb;text-decoration:none}
 #root .seo-shell a:hover{text-decoration:underline}
 #root .seo-lead{font-size:1.05rem;opacity:.85;margin:0 0 1.25rem}
+#root .seo-alias{font-size:.9rem;opacity:.7;margin:-.75rem 0 1rem}
+#root .seo-registry th{width:auto;white-space:normal}
+#root .seo-registry td{padding-right:.6rem;font-size:.85rem}
+#root .seo-shell h3{font-size:1rem;margin:1.1rem 0 .3rem}
 #root .seo-crumbs{font-size:.8rem;opacity:.7;margin-bottom:1rem}
 #root .seo-sep{margin:0 .4rem;opacity:.5}
 #root .seo-list{list-style:none;margin:0;padding:0}
@@ -1369,16 +1649,16 @@ def render_head(meta: PageMeta) -> str:
         f'<meta name="description" content="{e(meta.description)}">',
         f'<link rel="canonical" href="{e(meta.canonical)}">',
         f'<meta name="robots" content="{e(effective_robots(meta))}">',
-        f'<link rel="alternate" hreflang="uz" href="{e(meta.canonical)}">',
+        f'<link rel="alternate" hreflang="{e(meta.lang)}" href="{e(meta.canonical)}">',
         f'<link rel="alternate" hreflang="x-default" href="{e(meta.canonical)}">',
         f'<meta property="og:type" content="{e(meta.og_type)}">',
         f'<meta property="og:site_name" content="{SITE_NAME}">',
-        f'<meta property="og:locale" content="{DEFAULT_LOCALE}">',
+        f'<meta property="og:locale" content="{e(LOCALES.get(meta.lang, DEFAULT_LOCALE))}">',
         f'<meta property="og:title" content="{e(meta.title)}">',
         f'<meta property="og:description" content="{e(meta.description)}">',
         f'<meta property="og:url" content="{e(meta.canonical)}">',
         f'<meta property="og:image" content="{e(absolute("/og-image.png"))}">',
-        f'<meta property="og:image:alt" content="{SITE_NAME} — {e(SITE_TAGLINE)}">',
+        f'<meta property="og:image:alt" content="{e(meta.title)}">',
         '<meta property="og:image:width" content="1200">',
         '<meta property="og:image:height" content="630">',
         '<meta name="twitter:card" content="summary_large_image">',
@@ -1412,6 +1692,8 @@ def render_shell(template: str, meta: PageMeta) -> str:
     ya'ni robot va foydalanuvchi bir xil mazmunni ko'radi.
     """
     document = _TITLE_TAG.sub("", _DESC_TAG.sub("", template))
+    # Ruscha jurnal/maqola sahifasi Google'ga o'zbekcha deb e'lon qilinmasin.
+    document = document.replace('<html lang="uz">', f'<html lang="{e(meta.lang)}">', 1)
     document = document.replace("</head>", f"    {render_head(meta)}\n  </head>", 1)
     navigation = '<nav aria-label="Asosiy navigatsiya"><a href="/">IlmIz</a> · <a href="/jurnallar">Jurnallar</a> · <a href="/maqolalar">Maqolalar</a> · <a href="/yangi-maqolalar">Yangi maqolalar</a></nav>'
     body = f'<div class="seo-shell">{navigation}{meta.body}</div>' if meta.body else ""

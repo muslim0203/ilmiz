@@ -97,6 +97,9 @@ def _http_error(code: int) -> urllib.error.HTTPError:
     return urllib.error.HTTPError("https://x.test/oai", code, "err", {}, io.BytesIO(b""))
 
 
+OPEN = "harvester.oai_harvester.urllib.request.OpenerDirector.open"
+
+
 class RequestRetryTest(unittest.TestCase):
     """Vaqtinchalik xatolar butun harvest'ni yiqitmasin.
 
@@ -104,22 +107,28 @@ class RequestRetryTest(unittest.TestCase):
     bilan yiqilgan va `failed` bo'lib qolgan edi — bu xato `URLError`
     emasligi uchun qayta urinilmagan."""
 
+    def setUp(self) -> None:
+        # Backend importi SSRF tekshiruvini o'rnatadi; `x.test` DNS'da yo'q.
+        patcher = mock.patch("harvester.oai_harvester.URL_GUARD", None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @mock.patch("harvester.oai_harvester.time.sleep")
-    @mock.patch("harvester.oai_harvester.urllib.request.urlopen")
+    @mock.patch(OPEN)
     def test_incomplete_read_is_retried(self, urlopen, _sleep) -> None:
         urlopen.side_effect = [http.client.IncompleteRead(b""), _response(b"<ok/>")]
         self.assertEqual(_request("https://x.test/oai", {"verb": "Identify"}, timeout=1), b"<ok/>")
         self.assertEqual(urlopen.call_count, 2)
 
     @mock.patch("harvester.oai_harvester.time.sleep")
-    @mock.patch("harvester.oai_harvester.urllib.request.urlopen")
+    @mock.patch(OPEN)
     def test_remote_disconnected_and_reset_are_retried(self, urlopen, _sleep) -> None:
         urlopen.side_effect = [http.client.RemoteDisconnected(), ConnectionResetError(), _response(b"<ok/>")]
         self.assertEqual(_request("https://x.test/oai", {"verb": "Identify"}, timeout=1), b"<ok/>")
         self.assertEqual(urlopen.call_count, 3)
 
     @mock.patch("harvester.oai_harvester.time.sleep")
-    @mock.patch("harvester.oai_harvester.urllib.request.urlopen")
+    @mock.patch(OPEN)
     def test_http_500_is_retried_but_404_is_not(self, urlopen, _sleep) -> None:
         urlopen.side_effect = [_http_error(500), _response(b"<ok/>")]
         self.assertEqual(_request("https://x.test/oai", {"verb": "Identify"}, timeout=1), b"<ok/>")
@@ -130,7 +139,7 @@ class RequestRetryTest(unittest.TestCase):
         self.assertEqual(urlopen.call_count, 1)
 
     @mock.patch("harvester.oai_harvester.time.sleep")
-    @mock.patch("harvester.oai_harvester.urllib.request.urlopen")
+    @mock.patch(OPEN)
     def test_gives_up_after_retries(self, urlopen, _sleep) -> None:
         urlopen.side_effect = http.client.IncompleteRead(b"")
         with self.assertRaises(OAIError) as caught:

@@ -47,7 +47,6 @@ import { AppLink } from "@/components/app-link";
 import { ArticleCard } from "@/components/article-card";
 import { Brand } from "@/components/brand";
 import { JournalCard } from "@/components/journal-card";
-import { JournalSheet } from "@/components/journal-sheet";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,7 +107,11 @@ function App() {
   // Ko'rinish endi manzildan kelib chiqadi: `/jurnallar` va `/maqolalar` —
   // ikkita alohida indekslanadigan sahifa, holat emas.
   const route = useRoute();
-  const isArchive = route.kind === 'recent' || ('page' in route && route.page > 1) || (route.kind === 'journal' && route.year !== null);
+  // Jurnal sahifasi (`/jurnal/{slug}`) endi to'liq server matni bilan
+  // ko'rsatiladi. Ilgari u katalog + drawer edi: Googlebot render qilgach
+  // jurnal nomi bilan bir sahifada 50 ta boshqa jurnal nomi turardi, server
+  // HTML'dagi profil, tahririyat va OAK reestri esa yo'qolardi.
+  const isArchive = route.kind === 'recent' || ('page' in route && route.page > 1) || route.kind === 'journal';
   useEffect(() => { void syncHead(); }, [route]);
   const view: View =
     route.kind === "articles" || route.kind === "search" ? "articles" : "journals";
@@ -162,48 +165,8 @@ function App() {
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
 
-  // Jurnal drawer'i endi `/jurnal/{slug}` manzilida yashaydi — havolasini
-  // ulashish va qidiruv tizimlariga ko'rsatish mumkin.
-  const [fetchedJournal, setFetchedJournal] = useState<Journal | null>(null);
-  const indexedJournal =
-    route.kind === "journal" ? journalIndex.find((item) => item.id === route.slug) ?? null : null;
-  const selectedJournal =
-    route.kind === "journal" && !isArchive
-      ? indexedJournal ?? (fetchedJournal?.id === route.slug ? fetchedJournal : null)
-      : null;
-
-  useEffect(() => {
-    // Manzil to'g'ridan-to'g'ri ochilgan bo'lsa, indeks hali yuklanmagan
-    // bo'lishi mumkin — jurnalni alohida olamiz.
-    if (route.kind !== "journal" || indexedJournal) return;
-    let active = true;
-    void loadJournal(route.slug)
-      .then((value) => {
-        if (active) setFetchedJournal(value);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [indexedJournal, route]);
-
-  useEffect(() => {
-    if (route.kind !== "journal" || !selectedJournal) return;
-    const issn = selectedJournal.issn && selectedJournal.issn !== "—" ? `, ISSN ${selectedJournal.issn}` : "";
-    setHead({
-      title: `${selectedJournal.name} — OAK jurnali${issn}`,
-      description: clip(
-        selectedJournal.description ||
-          `${selectedJournal.name} — ${selectedJournal.city} shahrida ${selectedJournal.publisher} nashr etadigan OAK ro‘yxatidagi ilmiy jurnal.`,
-      ),
-      path: journalPath(selectedJournal.id),
-    });
-  }, [route, selectedJournal]);
-
-  const closeJournal = useCallback(() => {
-    if (window.history.length > 1) window.history.back();
-    else navigate("/jurnallar");
-  }, []);
+  // `/jurnal/{slug}` to'liq sahifa sifatida (`ArchivePage`) ko'rsatiladi —
+  // ilgari bu yerda katalog ustidagi drawer (`JournalSheet`) turardi.
 
   // `/soha/{slug}` va `/shahar/{slug}` — filtr emas, alohida qo'nish sahifasi.
   const routeField = useMemo(
@@ -401,12 +364,6 @@ function App() {
         eyebrow: `${routeCity} shahri`,
         title: `${routeCity} shahridagi OAK jurnallari`,
         lead: `${routeCity} shahrida nashr etiladigan OAK ro‘yxatidagi ilmiy jurnallar.`,
-      };
-    if (selectedJournal)
-      return {
-        eyebrow: "OAK jurnali",
-        title: selectedJournal.name,
-        lead: selectedJournal.description || catalogue,
       };
     if (route.kind === "articles" || route.kind === "search")
       return {
@@ -1073,7 +1030,6 @@ function App() {
         </div>
       </footer>
 
-      {selectedJournal && <JournalSheet journal={selectedJournal} onClose={closeJournal} />}
       {pickerOpen && (
         <FieldPicker
           groups={facets.fieldGroups}

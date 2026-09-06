@@ -298,6 +298,17 @@ Birinchi marta `harvest-20260906` nomi bilan bajarildi: 318 test serverda
 o'tdi, zaxira `/var/backups/ilmiz/before-harvest-20260906.db`, eski kod
 `/opt/ilmiz/app-before-harvest-20260906`.
 
+## nginx xavfsizlik sarlavhalari va rate-limit (06.09.2026)
+
+`nginx-ilmiz.conf` endi ikkita qo'shimcha faylga tayanadi:
+`/etc/nginx/snippets/ilmiz-headers.conf` (`deploy/nginx-ilmiz-headers.conf`)
+va `/etc/nginx/conf.d/ilmiz-ratelimit.conf` (`deploy/nginx-ilmiz-ratelimit.conf`).
+`setup-nginx.sh` ularni o'zi o'rnatadi; qo'lda yangilashda uchalasini
+birga nusxalab `nginx -t` qiling. Serverda 06.09.2026 da o'rnatildi, eski
+konfiguratsiya `/etc/nginx/sites-available/ilmiz.bak-security-20260906`.
+Tekshiruv: `/`, `/assets/*`, `/api/*` javoblarida `X-Frame-Options: DENY` va
+`frame-ancestors 'none'`; `/api/auth/*` ga 35 tez so'rovdan 10 tasi 429.
+
 ## Harvest jadvali (timer)
 
 2026-09-06 gacha serverda OAI-PMH harvest umuman avtomatik ishlamagan:

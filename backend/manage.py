@@ -343,7 +343,11 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "grant-admin":
-            user = grant_admin(db, args.identifier, revoke=args.revoke)
+            try:
+                user = grant_admin(db, args.identifier, revoke=args.revoke)
+            except ValueError as error:
+                print(json.dumps({"xato": str(error)}, ensure_ascii=False))
+                return 1
             if user is None:
                 print(json.dumps({"xato": f"foydalanuvchi topilmadi: {args.identifier}"}, ensure_ascii=False))
                 return 1

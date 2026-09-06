@@ -62,6 +62,21 @@ class ApiTest(unittest.TestCase):
         finally:
             os.environ.pop("ILMIZ_ADMIN_TOKEN", None)
 
+    def test_non_ascii_token_is_rejected_not_crashed(self) -> None:
+        """`compare_digest` `str` bilan faqat ASCII qabul qiladi — ilgari 500 berardi."""
+        from backend.app.main import _token_matches
+
+        os.environ["ILMIZ_ADMIN_TOKEN"] = ADMIN_TOKEN
+        try:
+            # httpx ASCII bo'lmagan header'ni yubormaydi; funksiyaning o'zi tekshiriladi.
+            self.assertFalse(_token_matches(None, "ёж"))
+            self.assertFalse(_token_matches("Bearer ёж", None))
+            self.assertTrue(_token_matches(None, ADMIN_TOKEN))
+            response = self.client.get("/api/admin/journals", params={"limit": -1}, headers={"X-Admin-Token": ADMIN_TOKEN})
+            self.assertEqual(response.status_code, 422)
+        finally:
+            os.environ.pop("ILMIZ_ADMIN_TOKEN", None)
+
     def test_admin_accepts_token_in_both_header_forms(self) -> None:
         os.environ["ILMIZ_ADMIN_TOKEN"] = ADMIN_TOKEN
         try:

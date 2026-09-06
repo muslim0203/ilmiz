@@ -19,6 +19,17 @@
     <link rel="manifest" href="/site.webmanifest" />
     <!-- DOI havolalari maqola sahifasidan eng ko'p bosiladi. -->
     <link rel="dns-prefetch" href="https://doi.org" />
+    <!-- Shrift: ilgari CSS ichidagi @import bilan kelardi — brauzer avval
+         bizning CSS'ni, keyin googleapis CSS'ni, keyin woff2'ni ketma-ket
+         yuklardi (render-blocking zanjir). preconnect + to'g'ridan-to'g'ri
+         link bilan ikki bosqich parallel ketadi; faqat ishlatiladigan
+         og'irliklar so'raladi. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    />
     <script>
       // Mavzu React yuklanmasdan oldin qo'llanadi — aks holda sahifa bir zumda oq yonadi.
       (function () {
