@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, Download, ExternalLink, Link2, Loader2, UsersRound } from "lucide-react";
 
 import { loadArticle, loadJournalArticles } from "@/api";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { clip, setHead } from "@/lib/head";
+import { initialArticle } from "@/lib/ssr";
 import { articlePath, fieldPath, journalPath, journalYearPath } from "@/lib/slug";
 import { cn } from "@/lib/utils";
 import type { Article } from "@/types";
@@ -20,14 +21,23 @@ const SHELL = "mx-auto w-full max-w-[1200px] px-4 sm:px-6";
  * beriladi; bu komponent o'sha sahifaning interaktiv ko'rinishi.
  */
 export default function ArticlePage({ id }: { id: string }) {
-  const [article, setArticle] = useState<Article | null>(null);
-  const [related, setRelated] = useState<Article[]>([]);
+  // Birinchi yuklashda server maqolani `<script id="ilmiz-data">` da bergan —
+  // `/api/articles/{id}` ga qayta so'rov yo'q (Googlebot uchun ham).
+  const seeded = useRef(initialArticle(id));
+  const [article, setArticle] = useState<Article | null>(() => seeded.current?.article ?? null);
+  const [related, setRelated] = useState<Article[]>(() => seeded.current?.related ?? []);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
+    if (seeded.current && String(seeded.current.article.id) === id) {
+      // Server bergan ma'lumot bilan ochildi — tarmoqqa chiqmaymiz.
+      seeded.current = null;
+      return;
+    }
     let active = true;
     setArticle(null);
+    setRelated([]);
     setError(false);
     loadArticle(id)
       .then((value) => {
@@ -40,9 +50,11 @@ export default function ArticlePage({ id }: { id: string }) {
         });
         const slug = value.journalSlug ?? value.journalId;
         if (slug) {
-          void loadJournalArticles(slug, 6).then((items) => {
-            if (active) setRelated(items.filter((item) => item.id !== value.id).slice(0, 5));
-          });
+          void loadJournalArticles(slug, 6)
+            .then((items) => {
+              if (active) setRelated(items.filter((item) => item.id !== value.id).slice(0, 5));
+            })
+            .catch(() => undefined);
         }
       })
       .catch(() => {

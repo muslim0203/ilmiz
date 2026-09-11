@@ -126,7 +126,19 @@ function App() {
   const [oaiOnly, setOaiOnly] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
 
+  // Katalog ma'lumotlari (jurnallar, maqolalar, statistika, facet'lar, jurnal
+  // indeksi — 6 ta so'rov) faqat katalog ko'rinishida kerak. Ilgari ular har
+  // sahifada, jumladan maqola va jurnal sahifalarida ham yuklanardi: Googlebot
+  // har sahifa uchun shuncha qo'shimcha so'rov qilardi.
+  const needsCatalog =
+    !isArchive &&
+    (route.kind === "home" || route.kind === "journals" || route.kind === "articles" ||
+      route.kind === "search" || route.kind === "field" || route.kind === "city" ||
+      route.kind === "fields" || route.kind === "cities" || route.kind === "notFound");
+  const catalogLoaded = useRef(false);
   useEffect(() => {
+    if (!needsCatalog || catalogLoaded.current) return;
+    catalogLoaded.current = true;
     let active = true;
     loadCatalog()
       .then((data) => {
@@ -143,12 +155,15 @@ function App() {
         setApiState("live");
       })
       .catch(() => {
-        if (active) setApiState("fallback");
+        if (active) {
+          catalogLoaded.current = false;
+          setApiState("fallback");
+        }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [needsCatalog]);
 
   useEffect(() => {
     let active = true;

@@ -112,6 +112,20 @@ class HomeAndArticleSeoTest(unittest.TestCase):
         self.assertIn("Фан спортга (2026)", description)
         self.assertIn("jild 9", description)
 
+    def test_article_data_is_embedded_for_hydration(self) -> None:
+        """React `/api/articles/{id}` ga qayta murojaat qilmasin — Googlebot ham."""
+        html = self.client.get("/maqola/2-basketbol-2").text
+        match = re.search(r'<script id="ilmiz-data" type="application/json">(.*?)</script>', html, re.S)
+        self.assertIsNotNone(match)
+        data = json.loads(match.group(1))
+        self.assertEqual(data["kind"], "article")
+        self.assertEqual(data["article"]["id"], "2")
+        self.assertEqual(data["article"]["journalId"], "fan-sportga")
+        self.assertIn("gost", data["article"]["citations"])
+        # `/api/seo` javobi (head/body) o'zgarmaydi — data faqat to'liq hujjatda.
+        payload = self.client.get("/api/seo", params={"path": "/maqola/2-basketbol-2"}).json()
+        self.assertNotIn("ilmiz-data", payload["head"])
+
     def test_gost_citation_format(self) -> None:
         article = self.db.get(Article, 1)
         gost = citation_formats(article)["gost"]

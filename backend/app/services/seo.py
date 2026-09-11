@@ -26,6 +26,7 @@ from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
 from .translit import alternate_names
 from .citations import citation_formats
+from .payloads import article_payload
 from . import search_index
 
 SITE_NAME = "IlmIz"
@@ -246,6 +247,9 @@ class PageMeta:
     modified_time: str | None = None
     # Sahifaning asosiy tili: <html lang>, hreflang va og:locale shundan.
     lang: str = DEFAULT_LANG
+    # React birinchi yuklashda API'ga qayta murojaat qilmasligi uchun sahifaga
+    # JSON sifatida joylanadigan ma'lumot (`<script id="ilmiz-data">`).
+    data: dict | None = None
 
     @property
     def canonical(self) -> str:
@@ -1481,6 +1485,13 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         jsonld=[scholarly, _breadcrumbs(crumbs)],
         head=head,
         lang=lang,
+        data={
+            "kind": "article",
+            "article": article_payload(article),
+            # React'dagi "Shu jurnaldan" bloki — `/api/articles?journal_slug=`
+            # so'rovisiz; qo'shnilar allaqachon shu sahifada.
+            "related": [article_payload(item) for item in siblings[:5]] if journal else [],
+        },
     )
 
 
@@ -1893,7 +1904,12 @@ def render_shell(template: str, meta: PageMeta) -> str:
     document = _TITLE_TAG.sub("", _DESC_TAG.sub("", template))
     # Ruscha jurnal/maqola sahifasi Google'ga o'zbekcha deb e'lon qilinmasin.
     document = document.replace('<html lang="uz">', f'<html lang="{e(meta.lang)}">', 1)
-    document = document.replace("</head>", f"    {render_head(meta)}\n  </head>", 1)
+    extra = ""
+    if meta.data is not None:
+        # `</script>` va `<` matn ichida kelsa HTML buzilmasin — JSON-LD dagi kabi.
+        payload = json.dumps(meta.data, ensure_ascii=False, separators=(",", ":")).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+        extra = f'\n    <script id="ilmiz-data" type="application/json">{payload}</script>'
+    document = document.replace("</head>", f"    {render_head(meta)}{extra}\n  </head>", 1)
     navigation = '<nav aria-label="Asosiy navigatsiya"><a href="/">IlmIz</a> · <a href="/jurnallar">Jurnallar</a> · <a href="/maqolalar">Maqolalar</a> · <a href="/yangi-maqolalar">Yangi maqolalar</a></nav>'
     body = f'<div class="seo-shell">{navigation}{meta.body}</div>' if meta.body else ""
     return document.replace('<div id="root"></div>', f'<div id="root">{body}</div>', 1)

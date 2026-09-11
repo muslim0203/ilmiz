@@ -35,7 +35,7 @@ from .services import authorship
 from .services import journal_edit
 from .services import search_index
 from .services.search_text import LIKE_ESCAPE, escape_like, query_words
-from .services.citations import citation_formats
+from .services.payloads import article_payload
 from .services.ingest import audit_source, ingest_source
 from harvester.oai_harvester import OAIError
 from .services.profile_collector import collect_profile
@@ -427,31 +427,6 @@ def journal_payload(
         payload["profile"] = profile_payload(journal)
     return payload
 
-
-def article_payload(article: Article) -> dict[str, object]:
-    return {
-        "id": str(article.id),
-        "title": article.title,
-        "authors": article.authors,
-        "journalId": article.journal.slug,
-        "journalName": article.journal.name,
-        "publicationDate": article.publication_date,
-        "year": article.publication_year or 0,
-        "volume": article.volume or "—",
-        "issue": article.issue or "—",
-        "pages": article.pages or "—",
-        "language": article.language or "Noma’lum",
-        "fields": article.fields,
-        "abstract": article.abstract or "Annotatsiya taqdim etilmagan.",
-        "keywords": article.keywords,
-        "doi": article.doi,
-        "hasPdf": bool(article.pdf_url),
-        "pdfUrl": article.pdf_url,
-        "harvestedAt": article.harvested_at.isoformat(),
-        "landingUrl": article.landing_url,
-        "citations": citation_formats(article),
-        "isDemo": bool(article.doi and article.doi.startswith("10.0000/demo")),
-    }
 
 
 @app.get("/api/health")
