@@ -1126,6 +1126,31 @@ def auth_start(provider: str, redirect_to: str | None = None, db: Session = Depe
     return RedirectResponse(auth_service.authorize_url(provider, state), status_code=307)
 
 
+@auth.get("/{provider}/link")
+def auth_link_start(
+    provider: str,
+    redirect_to: str | None = None,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Kirgan profilga ikkinchi kirish usulini ulash (masalan ORCID + Google).
+
+    State kim boshlaganini eslab qoladi; callback'da aynan shu sessiya
+    bo'lmasa ulash rad etiladi — begona havola orqali boshqa odamning
+    hisobini o'z profiliga ulab bo'lmaydi.
+    """
+    try:
+        config = auth_service.provider_config(provider)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    if not config.configured:
+        raise HTTPException(status_code=503, detail=f"{provider} sozlanmagan")
+    state = auth_service.create_state(
+        db, provider, auth_service.safe_redirect(redirect_to), link_user_id=user.id
+    )
+    return RedirectResponse(auth_service.authorize_url(provider, state), status_code=307)
+
+
 @auth.get("/{provider}/callback")
 def auth_callback(
     provider: str,
@@ -1141,7 +1166,7 @@ def auth_callback(
     if not code or not state:
         raise HTTPException(status_code=400, detail="code yoki state yetishmayapti")
     try:
-        redirect_to = auth_service.consume_state(db, provider, state)
+        redirect_to, link_user_id = auth_service.consume_state_link(db, provider, state)
     except LookupError as failure:
         raise HTTPException(status_code=400, detail="state yaroqsiz yoki muddati o‘tgan") from failure
     # Saqlangan qiymat allaqachon tekshirilgan; bu yerda yana bir bor —
@@ -1152,6 +1177,19 @@ def auth_callback(
     except Exception as failure:  # noqa: BLE001 - provayder xatosi foydalanuvchiga ko‘rinmasin
         logger.exception("OAuth almashuvi yiqildi: %s", provider)
         raise HTTPException(status_code=502, detail="Provayder bilan almashuv amalga oshmadi") from failure
+
+    if link_user_id is not None:
+        # Ulash: yangi sessiya ochilmaydi, natija `?hisob=` bilan qaytadi.
+        target = redirect_to or f"{auth_service.public_base_url()}/"
+        current = current_user(request, db)
+        if current is None or current.id != link_user_id:
+            outcome = "sessiya-yoq"
+        else:
+            try:
+                outcome = auth_service.link_identity(db, current, provider, identity)
+            except auth_service.LinkError as refusal:
+                outcome = refusal.code
+        return RedirectResponse(auth_service.with_query(target, hisob=outcome), status_code=307)
 
     user = auth_service.upsert_user(db, provider, identity)
     token = auth_service.create_session(db, user, user_agent=request.headers.get("user-agent"))

@@ -640,6 +640,147 @@ class AuthTest(unittest.TestCase):
         result = self.orcid_login({"affiliation-group": [self.employment("ORCID'dagi joy")]}, orcid=orcid)
         self.assertEqual((result["affiliation"], result["source"]), ("Avval kiritilgan", None))
 
+    # --- kirish usullarini ulash ----------------------------------------
+
+    def login_session(self, provider: str, subject: str, *, name: str = "Ulash Sinov", **extra) -> tuple[int, str]:
+        with SessionLocal() as db:
+            identity = auth_service.ProviderIdentity(
+                subject=subject, display_name=name, orcid=subject if provider == "orcid" else None, **extra)
+            user = auth_service.upsert_user(db, provider, identity)
+            return user.id, auth_service.create_session(db, db.get(User, user.id))
+
+    def link_via_callback(self, provider: str, identity, *, session_token: str, callback_token: str | None = None):
+        """Ulashni `session_token` bilan boshlab, callback'ni `callback_token` bilan tugatadi."""
+        from urllib.parse import parse_qs, urlsplit
+
+        self.configure()
+        self.client.cookies.clear()
+        self.client.cookies.set(auth_service.SESSION_COOKIE, session_token)
+        start = self.client.get(
+            f"/api/auth/{provider}/link",
+            params={"redirect_to": "http://127.0.0.1:5173/jurnallar?sahifa=2"},
+            follow_redirects=False,
+        )
+        self.assertEqual(start.status_code, 307)
+        state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+        self.client.cookies.clear()
+        token = session_token if callback_token is None else callback_token
+        if token:
+            self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        with patch.object(auth_service, "exchange_code", return_value=identity):
+            return self.client.get(
+                f"/api/auth/{provider}/callback", params={"code": "c", "state": state}, follow_redirects=False)
+
+    @staticmethod
+    def hisob(response) -> str | None:
+        from urllib.parse import parse_qs, urlsplit
+
+        return parse_qs(urlsplit(response.headers["location"]).query).get("hisob", [None])[0]
+
+    def test_login_creates_identity_and_keeps_edited_name(self) -> None:
+        from backend.app.models import UserIdentity
+
+        subject = "0000-0002-1825-0130"
+        user_id, _ = self.login_session("orcid", subject, name="ORCID'dagi ism")
+        with SessionLocal() as db:
+            db.get(User, user_id).display_name = "O'zim yozgan ism"
+            db.commit()
+        again, _ = self.login_session("orcid", subject, name="ORCID'dagi ism")
+        self.assertEqual(again, user_id)
+        with SessionLocal() as db:
+            self.assertEqual(db.get(User, user_id).display_name, "O'zim yozgan ism")
+            rows = db.scalars(select(UserIdentity).where(UserIdentity.user_id == user_id)).all()
+            self.assertEqual([(row.provider, row.subject) for row in rows], [("orcid", subject)])
+
+    def test_link_google_to_orcid_profile(self) -> None:
+        from urllib.parse import parse_qs, urlsplit
+
+        user_id, token = self.login_session("orcid", "0000-0002-1825-0131")
+        google = auth_service.ProviderIdentity(subject="g-link-131", display_name="Google ism", email="link131@example.uz")
+        response = self.link_via_callback("google", google, session_token=token)
+        self.assertEqual(response.status_code, 307)
+        location = urlsplit(response.headers["location"])
+        self.assertEqual(location.path, "/jurnallar")
+        self.assertEqual(parse_qs(location.query), {"sahifa": ["2"], "hisob": ["ulandi"]})
+        # Ulash yangi sessiya ochmaydi.
+        self.assertNotIn(auth_service.SESSION_COOKIE, response.headers.get("set-cookie", ""))
+
+        self.client.cookies.clear()
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        me = self.client.get("/api/auth/me").json()["user"]
+        self.assertEqual(me["id"], user_id)
+        self.assertEqual(me["providers"], ["google", "orcid"])
+        self.assertEqual(me["email"], "link131@example.uz")
+        self.assertEqual(me["displayName"], "Ulash Sinov")
+        # Endi Google bilan kirish ham shu profilni ochadi.
+        with SessionLocal() as db:
+            self.assertEqual(auth_service.upsert_user(db, "google", google).id, user_id)
+        self.assertEqual(self.hisob(self.link_via_callback("google", google, session_token=token)), "allaqachon")
+
+    def test_linking_an_existing_google_profile_merges_it(self) -> None:
+        from backend.app.models import Article, UserArticle
+        from backend.app.services import authorship
+
+        google = auth_service.ProviderIdentity(subject="g-merge-132", display_name="Google profil", email="merge132@example.uz")
+        with SessionLocal() as db:
+            first, second = db.scalars(select(Article.id).order_by(Article.id).limit(2)).all()
+            g_user = auth_service.upsert_user(db, "google", google)
+            g_id = g_user.id
+            g_user.is_admin = True
+            g_user.scholar_url = "https://scholar.google.com/citations?user=M132"
+            db.commit()
+            authorship.claim(db, db.get(User, g_id), first)
+            authorship.claim(db, db.get(User, g_id), second)
+            db.commit()
+            g_token = auth_service.create_session(db, db.get(User, g_id))
+        user_id, token = self.login_session("orcid", "0000-0002-1825-0132")
+        with SessionLocal() as db:
+            authorship.claim(db, db.get(User, user_id), first)  # ikkala profilda ham bor
+            db.commit()
+
+        self.assertEqual(self.hisob(self.link_via_callback("google", google, session_token=token)), "birlashtirildi")
+        with SessionLocal() as db:
+            self.assertIsNone(db.get(User, g_id))
+            kept = db.get(User, user_id)
+            self.assertTrue(kept.is_admin)
+            self.assertEqual(kept.email, "merge132@example.uz")
+            self.assertIn("M132", kept.scholar_url)
+            self.assertEqual(kept.orcid, "0000-0002-1825-0132")
+            claimed = sorted(db.scalars(select(UserArticle.article_id).where(UserArticle.user_id == user_id)))
+            self.assertEqual(claimed, sorted({first, second}))
+        # Google profilining eski sessiyasi endi birlashgan profilni ochadi.
+        self.client.cookies.clear()
+        self.client.cookies.set(auth_service.SESSION_COOKIE, g_token)
+        self.assertEqual(self.client.get("/api/auth/me").json()["user"]["id"], user_id)
+
+    def test_link_requires_the_same_session_on_callback(self) -> None:
+        from backend.app.models import UserIdentity
+
+        _, owner_token = self.login_session("orcid", "0000-0002-1825-0133")
+        _, other_token = self.login_session("orcid", "0000-0002-1825-0134")
+        google = auth_service.ProviderIdentity(subject="g-link-133", display_name="G")
+        for callback_token in (other_token, ""):
+            response = self.link_via_callback("google", google, session_token=owner_token, callback_token=callback_token)
+            self.assertEqual(self.hisob(response), "sessiya-yoq")
+        with SessionLocal() as db:
+            self.assertIsNone(db.scalar(select(UserIdentity).where(UserIdentity.subject == "g-link-133")))
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get("/api/auth/google/link", follow_redirects=False).status_code, 401)
+
+    def test_link_refusals(self) -> None:
+        _, token = self.login_session("orcid", "0000-0002-1825-0135")
+        second_orcid = auth_service.ProviderIdentity(
+            subject="0000-0002-1825-0136", display_name="X", orcid="0000-0002-1825-0136")
+        self.assertEqual(self.hisob(self.link_via_callback("orcid", second_orcid, session_token=token)), "provayder-band")
+
+        g_id, g_token = self.login_session("google", "g-link-137")
+        with SessionLocal() as db:
+            db.get(User, g_id).orcid = "0000-0002-1825-0138"
+            db.commit()
+        other_orcid = auth_service.ProviderIdentity(
+            subject="0000-0002-1825-0139", display_name="Y", orcid="0000-0002-1825-0139")
+        self.assertEqual(self.hisob(self.link_via_callback("orcid", other_orcid, session_token=g_token)), "boshqa-orcid")
+
     def test_blank_name_is_rejected(self) -> None:
         user = self.make_user(subject="0000-0002-1825-0101")
         with SessionLocal() as db:

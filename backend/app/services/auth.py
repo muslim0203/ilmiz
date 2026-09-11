@@ -20,13 +20,13 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from ..models import OAuthState, User, UserSession
+from ..models import OAuthState, User, UserArticle, UserIdentity, UserSession
 from . import orcid_profile
 
 logger = logging.getLogger(__name__)
@@ -143,15 +143,21 @@ def available_providers() -> list[str]:
 
 # --- state ---------------------------------------------------------------
 
-def create_state(db: Session, provider: str, redirect_to: str | None) -> str:
+def create_state(
+    db: Session, provider: str, redirect_to: str | None, *, link_user_id: int | None = None
+) -> str:
     db.execute(delete(OAuthState).where(OAuthState.created_at < datetime.now(timezone.utc) - STATE_TTL))
     state = secrets.token_urlsafe(32)
-    db.add(OAuthState(state=state, provider=provider, redirect_to=redirect_to))
+    db.add(OAuthState(state=state, provider=provider, redirect_to=redirect_to, link_user_id=link_user_id))
     db.commit()
     return state
 
 
 def consume_state(db: Session, provider: str, state: str) -> str | None:
+    return consume_state_link(db, provider, state)[0]
+
+
+def consume_state_link(db: Session, provider: str, state: str) -> tuple[str | None, int | None]:
     """State'ni bir marta ishlatadi va o'chiradi; `redirect_to` ni qaytaradi.
 
     Noto'g'ri yoki muddati o'tgan state — `LookupError`. Ilgari bu holat ham
@@ -163,12 +169,12 @@ def consume_state(db: Session, provider: str, state: str) -> str | None:
     if row is None:
         raise LookupError("state topilmadi")
     fresh = row.created_at.replace(tzinfo=timezone.utc) >= datetime.now(timezone.utc) - STATE_TTL
-    redirect_to = row.redirect_to
+    redirect_to, link_user_id = row.redirect_to, row.link_user_id
     db.delete(row)
     db.commit()
     if not fresh:
         raise LookupError("state muddati o'tgan")
-    return redirect_to
+    return redirect_to, link_user_id
 
 
 def authorize_url(provider: str, state: str) -> str:
@@ -247,21 +253,22 @@ def exchange_code(provider: str, code: str, *, timeout: int = 20) -> ProviderIde
 
 # --- foydalanuvchi va sessiya --------------------------------------------
 
-def upsert_user(db: Session, provider: str, identity: ProviderIdentity) -> User:
-    user = db.scalar(
-        select(User).where(User.provider == provider, User.provider_subject == identity.subject)
+def _find_identity(db: Session, provider: str, subject: str) -> UserIdentity | None:
+    return db.scalar(
+        select(UserIdentity).where(UserIdentity.provider == provider, UserIdentity.subject == subject)
     )
-    if user is None and identity.orcid:
-        # Bir odam avval Google bilan kirgan bo'lsa ham, ORCID bir xil bo'lsa
-        # yangi hisob ochmaymiz.
-        user = db.scalar(select(User).where(User.orcid == identity.orcid))
-    if user is None:
-        user = User(provider=provider, provider_subject=identity.subject, display_name=identity.display_name)
-        db.add(user)
-    user.display_name = identity.display_name or user.display_name
+
+
+def _apply_identity(user: User, provider: str, identity: ProviderIdentity) -> None:
+    """Provayder bergan ma'lumotni profilga yozadi (ism bundan mustasno).
+
+    Ism faqat profil ochilganda olinadi: ilgari har kirishda provayderdagi ism
+    foydalanuvchi tahririni ustidan yozardi, ulangan ikki provayder esa uni
+    har kirishda almashtirib turgan bo'lardi.
+    """
     if identity.email:
         user.email = identity.email
-    if identity.orcid:
+    if identity.orcid and not user.orcid:
         user.orcid = identity.orcid
     # Provayderdan kelgan ish joyi faqat bo'sh joyni yoki avval ham shu yo'l
     # bilan to'ldirilganini yangilaydi — foydalanuvchi yozganini emas.
@@ -270,10 +277,148 @@ def upsert_user(db: Session, provider: str, identity: ProviderIdentity) -> User:
         user.affiliation = identity.affiliation
         user.affiliation_ror = identity.affiliation_ror
         user.affiliation_source = provider
-    user.last_login_at = datetime.now(timezone.utc)
+
+
+def upsert_user(db: Session, provider: str, identity: ProviderIdentity) -> User:
+    now = datetime.now(timezone.utc)
+    link = _find_identity(db, provider, identity.subject)
+    user = link.user if link is not None else None
+    if user is None and identity.orcid:
+        user = db.scalar(select(User).where(User.orcid == identity.orcid))
+    if user is None:
+        user = User(provider=provider, provider_subject=identity.subject, display_name=identity.display_name)
+        db.add(user)
+    if link is None:
+        link = UserIdentity(user=user, provider=provider, subject=identity.subject)
+        db.add(link)
+    link.last_login_at = now
+    _apply_identity(user, provider, identity)
+    user.last_login_at = now
     db.commit()
     db.refresh(user)
     return user
+
+
+# --- hisoblarni bog'lash -------------------------------------------------
+
+class LinkError(Exception):
+    """Ulash rad etildi; `code` frontend'ga `?hisob=` sifatida qaytadi."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def merge_users(db: Session, *, keep: User, drop: User) -> None:
+    """`drop` profilini `keep` ga qo'shib o'chiradi. Commit qilmaydi.
+
+    Ko'chiriladi: kirish usullari, tasdiqlangan maqolalar (ikkalasida bor
+    bo'lsa bittasi qoladi), sessiyalar. `keep` dagi bo'sh maydonlar
+    (ORCID iD, e-pochta, Scholar, ish joyi) `drop` dan to'ldiriladi,
+    to'lganlariga tegilmaydi. Admin huquqi ikkalasidan birida bo'lsa qoladi.
+    """
+    if keep.id == drop.id:
+        raise ValueError("bir xil profilni o'zi bilan birlashtirib bo'lmaydi")
+    db.flush()
+    carried = {
+        "orcid": drop.orcid, "email": drop.email, "scholar_url": drop.scholar_url,
+        "affiliation": drop.affiliation, "affiliation_ror": drop.affiliation_ror,
+        "affiliation_source": drop.affiliation_source, "is_admin": drop.is_admin,
+        "created_at": drop.created_at, "last_login_at": drop.last_login_at,
+    }
+    no_sync = {"synchronize_session": False}
+    kept_articles = select(UserArticle.article_id).where(UserArticle.user_id == keep.id)
+    db.execute(
+        update(UserArticle)
+        .where(UserArticle.user_id == drop.id, UserArticle.article_id.not_in(kept_articles))
+        .values(user_id=keep.id)
+        .execution_options(**no_sync)
+    )
+    db.execute(delete(UserArticle).where(UserArticle.user_id == drop.id).execution_options(**no_sync))
+    db.execute(update(UserIdentity).where(UserIdentity.user_id == drop.id).values(user_id=keep.id).execution_options(**no_sync))
+    db.execute(update(UserSession).where(UserSession.user_id == drop.id).values(user_id=keep.id).execution_options(**no_sync))
+    db.execute(delete(OAuthState).where(OAuthState.link_user_id == drop.id).execution_options(**no_sync))
+    db.execute(delete(User).where(User.id == drop.id).execution_options(**no_sync))
+    db.expunge(drop)
+    db.expire_all()
+
+    for field in ("orcid", "email", "scholar_url"):
+        if not getattr(keep, field) and carried[field]:
+            setattr(keep, field, carried[field])
+    if not keep.affiliation and carried["affiliation"]:
+        keep.affiliation = carried["affiliation"]
+        keep.affiliation_ror = carried["affiliation_ror"]
+        keep.affiliation_source = carried["affiliation_source"]
+    keep.is_admin = bool(keep.is_admin or carried["is_admin"])
+    if carried["created_at"] and (keep.created_at is None or carried["created_at"] < keep.created_at):
+        keep.created_at = carried["created_at"]
+    if carried["last_login_at"] and (keep.last_login_at is None or carried["last_login_at"] > keep.last_login_at):
+        keep.last_login_at = carried["last_login_at"]
+    db.flush()
+
+
+def link_identity(db: Session, user: User, provider: str, identity: ProviderIdentity) -> str:
+    """Kirgan foydalanuvchiga yana bir kirish usulini ulaydi.
+
+    Natija: `ulandi`, `birlashtirildi` (usul boshqa profilga tegishli edi —
+    foydalanuvchi ikkalasini ham boshqarishini provayder orqali isbotladi)
+    yoki `allaqachon`. Rad etilsa `LinkError`.
+    """
+    now = datetime.now(timezone.utc)
+    link = _find_identity(db, provider, identity.subject)
+    if link is not None and link.user_id == user.id:
+        link.last_login_at = now
+        db.commit()
+        return "allaqachon"
+    mine = {item.provider for item in user.identities}
+    if provider in mine:
+        raise LinkError("provayder-band")
+    other = link.user if link is not None else None
+    if other is None and identity.orcid:
+        other = db.scalar(select(User).where(User.orcid == identity.orcid, User.id != user.id))
+    if identity.orcid and user.orcid and identity.orcid != user.orcid:
+        raise LinkError("boshqa-orcid")
+    outcome = "ulandi"
+    if other is not None:
+        if {item.provider for item in other.identities} & mine:
+            raise LinkError("birlashtirib-bolmaydi")
+        if other.orcid and user.orcid and other.orcid != user.orcid:
+            raise LinkError("boshqa-orcid")
+        merge_users(db, keep=user, drop=other)
+        outcome = "birlashtirildi"
+        link = _find_identity(db, provider, identity.subject)
+    if link is None:
+        link = UserIdentity(user_id=user.id, provider=provider, subject=identity.subject)
+        db.add(link)
+    link.last_login_at = now
+    _apply_identity(user, provider, identity)
+    db.commit()
+    db.refresh(user)
+    return outcome
+
+
+def with_query(url: str, **params: str) -> str:
+    """Manzilga querystring parametrlarini qo'shadi (borini almashtiradi)."""
+    parts = urlsplit(url)
+    query = [(key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True) if key not in params]
+    query += list(params.items())
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def account_summary(db: Session, user: User) -> dict[str, object]:
+    """CLI uchun profilning qisqa tavsifi (sirlarsiz)."""
+    return {
+        "id": user.id,
+        "ism": user.display_name,
+        "kirish_usullari": sorted({item.provider for item in user.identities}),
+        "orcid_bor": bool(user.orcid),
+        "email_bor": bool(user.email),
+        "ish_joyi": user.affiliation,
+        "is_admin": user.is_admin,
+        "maqolalar": db.scalar(select(func.count()).select_from(UserArticle).where(UserArticle.user_id == user.id)),
+        "sessiyalar": db.scalar(select(func.count()).select_from(UserSession).where(UserSession.user_id == user.id)),
+        "yaratilgan": user.created_at.isoformat() if user.created_at else None,
+    }
 
 
 def _hash_token(token: str) -> str:
@@ -371,6 +516,7 @@ def user_payload(user: User) -> dict[str, object]:
     return {
         "id": user.id,
         "provider": user.provider,
+        "providers": sorted({item.provider for item in user.identities}) or [user.provider],
         "isAdmin": user.is_admin,
         "displayName": user.display_name,
         "email": user.email,

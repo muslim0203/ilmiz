@@ -177,6 +177,11 @@ function App() {
     };
   }, [accountOpen]);
 
+  // Kirish usulini ulashdan (`?hisob=...`) qaytilganda natija profil oynasida ko'rinsin.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("hisob")) setAccountOpen(true);
+  }, []);
+
   const cities = ["Barcha shaharlar", ...facets.cities.map((item) => item.name)];
   const fieldSet = useMemo(() => new Set(selectedFields), [selectedFields]);
 

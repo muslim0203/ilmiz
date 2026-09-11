@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, LogOut, ShieldCheck, UserRound } from "lucide-react";
+import { CheckCircle2, Link2, LogOut, ShieldCheck, UserRound } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +17,11 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PROVIDER_LABELS,
+  PROVIDER_NAMES,
   loadCurrentUser,
   loadProviders,
   logout,
+  startLink,
   startLogin,
   updateProfile,
   type AuthUser,
@@ -30,7 +32,40 @@ import MyArticles from "@/MyArticles";
 
 const ORCID_HELP = "ORCID — tadqiqotchining xalqaro identifikatori. orcid.org da bepul olinadi.";
 
+/** `/api/auth/{provider}/link` callback'i qaytaradigan `?hisob=` natijalari. */
+const LINK_RESULTS: Record<string, { ok: boolean; text: string }> = {
+  ulandi: { ok: true, text: "Kirish usuli profilingizga ulandi. Endi qaysi biri bilan kirsangiz ham shu profil ochiladi." },
+  birlashtirildi: {
+    ok: true,
+    text: "Ikkinchi profilingiz shu profilga birlashtirildi: kirish usuli va tasdiqlangan maqolalar ko‘chirildi.",
+  },
+  allaqachon: { ok: true, text: "Bu hisob allaqachon shu profilga ulangan." },
+  "provayder-band": { ok: false, text: "Profilingizga bu provayderning boshqa hisobi allaqachon ulangan." },
+  "boshqa-orcid": { ok: false, text: "Profilingizda boshqa ORCID iD bor — bu ORCID hisobini ulab bo‘lmaydi." },
+  "birlashtirib-bolmaydi": {
+    ok: false,
+    text: "Bu hisob boshqa profilga tegishli va uni avtomatik birlashtirib bo‘lmaydi. Administratorga murojaat qiling.",
+  },
+  "sessiya-yoq": { ok: false, text: "Ulash uchun avval tizimga kiring va qayta urinib ko‘ring." },
+};
+
 export default function AccountPanel({ onClose }: { onClose: () => void }) {
+  const [linkResult] = useState(() => {
+    const code = new URLSearchParams(window.location.search).get("hisob");
+    return code ? (LINK_RESULTS[code] ?? { ok: false, text: "Kirish usulini ulab bo‘lmadi." }) : null;
+  });
+  useEffect(() => {
+    // Natija bir marta ko'rsatiladi: sahifa yangilansa yoki ulashilsa qayta chiqmasin.
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("hisob")) return;
+    params.delete("hisob");
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+  }, []);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [providers, setProviders] = useState<string[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -114,6 +149,13 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
           </DialogDescription>
         </DialogHeader>
 
+        {linkResult && (
+          <Alert variant={linkResult.ok ? "success" : "destructive"}>
+            {linkResult.ok && <CheckCircle2 />}
+            <AlertDescription>{linkResult.text}</AlertDescription>
+          </Alert>
+        )}
+
         {state === "loading" && (
           <div className="space-y-2">
             <Skeleton className="h-9 w-full" />
@@ -186,10 +228,14 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
                   {user.email ?? "e-pochta ko‘rsatilmagan"}
                 </div>
               </div>
-              <Badge variant="outline" className="gap-1 font-normal">
-                <ShieldCheck />
-                {user.provider === "orcid" ? "ORCID" : "Google"}
-              </Badge>
+              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                {user.providers.map((item) => (
+                  <Badge key={item} variant="outline" className="gap-1 font-normal">
+                    <ShieldCheck />
+                    {PROVIDER_NAMES[item] ?? item}
+                  </Badge>
+                ))}
+              </div>
             </div>
 
             {user.orcid && (
@@ -204,6 +250,24 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
                   {user.orcid}
                 </a>
               </p>
+            )}
+
+            {providers.some((item) => !user.providers.includes(item)) && (
+              <div className="space-y-2 rounded-lg border border-dashed p-3">
+                <p className="text-xs text-muted-foreground">
+                  Boshqa hisobingiz ham bormi? Uni ulang — qaysi biri bilan kirsangiz ham shu profil
+                  ochiladi. O‘sha hisob bilan alohida profil ochilgan bo‘lsa, u shu profilga birlashtiriladi.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {providers
+                    .filter((item) => !user.providers.includes(item))
+                    .map((item) => (
+                      <Button key={item} type="button" variant="outline" size="sm" onClick={() => startLink(item)}>
+                        <Link2 /> {PROVIDER_NAMES[item] ?? item} hisobini ulash
+                      </Button>
+                    ))}
+                </div>
+              </div>
             )}
 
             <Separator />

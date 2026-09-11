@@ -77,6 +77,9 @@ Sozlanmagan provayder kirish oynasida ko‘rsatilmaydi. Endpointlar:
 - `PATCH /api/auth/me` — ism, ish joyi (`affiliation_ror` bilan ROR'ga bog'lanadi), Scholar havolasi.
   ORCID bilan kirganda ish joyi ORCID yozuvidagi joriy ish joyidan to'ldiriladi
   (`affiliationSource: "orcid"`); foydalanuvchi o'zi kiritgani ustidan yozilmaydi.
+- `GET /api/auth/{provider}/link` — kirgan profilga ikkinchi kirish usulini ulash (ORCID + Google);
+  usul boshqa profilga tegishli bo'lsa, u shu profilga birlashtiriladi. Natija `?hisob=` bilan qaytadi.
+  Mavjud ikki profilni qo'lda birlashtirish: `manage.py merge-users --keep ID --drop ID [--apply]`
 - `GET /api/auth/ror/search?q=` — ish joyini ROR registridan qidirish (kirgan foydalanuvchi uchun;
   `ROR_CLIENT_ID` bo'lsa limit yuqoriroq)
 - `POST /api/auth/logout` — sessiyani bekor qiladi

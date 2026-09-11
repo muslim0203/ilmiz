@@ -3,6 +3,8 @@ import type { Article } from "@/types";
 export type AuthUser = {
   id: number;
   provider: "orcid" | "google";
+  /** Profilga ulangan barcha kirish usullari. */
+  providers: string[];
   isAdmin: boolean;
   displayName: string;
   email: string | null;
@@ -84,9 +86,20 @@ export function startLogin(provider: string): void {
   window.location.href = `/api/auth/${provider}/start?redirect_to=${redirect}`;
 }
 
+/** Kirgan profilga yana bir kirish usulini ulash; natija `?hisob=` bilan qaytadi. */
+export function startLink(provider: string): void {
+  const redirect = encodeURIComponent(window.location.href);
+  window.location.href = `/api/auth/${provider}/link?redirect_to=${redirect}`;
+}
+
 export const PROVIDER_LABELS: Record<string, string> = {
   orcid: "ORCID bilan kirish",
   google: "Google bilan kirish",
+};
+
+export const PROVIDER_NAMES: Record<string, string> = {
+  orcid: "ORCID",
+  google: "Google",
 };
 
 export type AuthorshipStats = {

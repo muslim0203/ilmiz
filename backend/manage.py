@@ -65,7 +65,7 @@ from backend.app.services.ingest import (
 from backend.app.services import indexnow
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
-from backend.app.services.auth import grant_admin
+from backend.app.services.auth import account_summary, grant_admin, merge_users
 from backend.app.services.merge_duplicates import merge_duplicates
 from backend.app.services.platform_split import split_platform_source
 from backend.app.services.tadqiq_import import import_tadqiq
@@ -191,6 +191,11 @@ def main() -> int:
     admin_cmd = subparsers.add_parser("grant-admin")
     admin_cmd.add_argument("identifier", help="ORCID iD yoki e-pochta")
     admin_cmd.add_argument("--revoke", action="store_true", help="Huquqni olib tashlash")
+    # Bir odamning ikki profilini (masalan Google va ORCID) bittaga birlashtirish.
+    merge_users_cmd = subparsers.add_parser("merge-users", help="Bir odamning ikki profilini birlashtirish")
+    merge_users_cmd.add_argument("--keep", type=int, required=True, help="Qoladigan profil ID")
+    merge_users_cmd.add_argument("--drop", type=int, required=True, help="Qo'shilib o'chiriladigan profil ID")
+    merge_users_cmd.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
     subparsers.add_parser("rebuild-search-index")
     merge_dups = subparsers.add_parser("merge-duplicates")
     merge_dups.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
@@ -355,6 +360,25 @@ def main() -> int:
                 "id": user.id, "ism": user.display_name, "orcid": user.orcid,
                 "email": user.email, "is_admin": user.is_admin,
             }, ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "merge-users":
+            from backend.app.models import User
+
+            keep, drop = db.get(User, args.keep), db.get(User, args.drop)
+            if keep is None or drop is None or keep.id == drop.id:
+                print(json.dumps({"xato": "ikkita turli, mavjud profil ID'si kerak"}, ensure_ascii=False))
+                return 1
+            summary = {
+                "rejim": "apply" if args.apply else "dry-run",
+                "qoladi": account_summary(db, keep),
+                "qo'shiladi": account_summary(db, drop),
+            }
+            if args.apply:
+                merge_users(db, keep=keep, drop=drop)
+                db.commit()
+                db.refresh(keep)
+                summary["natija"] = account_summary(db, keep)
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
             return 0
         if args.command == "rebuild-search-index":
             print(json.dumps(rebuild_search_index(db), ensure_ascii=False, indent=2))

@@ -455,6 +455,34 @@ class User(Base):
     claimed_articles: Mapped[list["UserArticle"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    identities: Mapped[list["UserIdentity"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class UserIdentity(Base):
+    """Profilga ulangan kirish usuli: provayder va undagi barqaror identifikator.
+
+    Bir odam ORCID bilan ham, Google bilan ham kirishi mumkin. Ilgari har
+    provayder alohida profil ochardi, chunki ikkalasini bog'laydigan umumiy
+    maydon yo'q (ORCID e-pochta bermaydi). Endi profil ichidan ikkinchi usul
+    ulanadi va qaysi biri bilan kirilsa ham shu profil ochiladi.
+    `users.provider`/`provider_subject` — profil ochilgan birinchi usul.
+    """
+
+    __tablename__ = "user_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "subject", name="user_identity_uq"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))
+    subject: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="identities")
 
 
 class UserArticle(Base):
@@ -510,4 +538,7 @@ class OAuthState(Base):
     state: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     provider: Mapped[str] = mapped_column(String(20))
     redirect_to: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Ulash oqimi: kim boshlagan bo'lsa, callback'da ham aynan o'sha sessiya
+    # bo'lishi shart. Oddiy kirishda bo'sh.
+    link_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
