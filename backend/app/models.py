@@ -435,6 +435,9 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
     display_name: Mapped[str] = mapped_column(String(200))
     affiliation: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Ish joyi ROR'dan tanlangan bo'lsa uning ID'si (`05a28rw58`). Qo'lda
+    # yozilgan ish joyida bo'sh; matn o'zgarsa bog'lanish o'chiriladi.
+    affiliation_ror: Mapped[str | None] = mapped_column(String(9), nullable=True)
     # Google Scholar'da OAuth yo'q, shuning uchun profil havolasi qo'lda kiritiladi.
     scholar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

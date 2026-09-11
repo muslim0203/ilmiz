@@ -33,6 +33,7 @@ from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stat
 from .services import auth as auth_service
 from .services import authorship
 from .services import journal_edit
+from .services import ror as ror_service
 from .services import search_index
 from .services.search_text import LIKE_ESCAPE, escape_like, query_words
 from .services.payloads import article_payload
@@ -1085,6 +1086,8 @@ auth = APIRouter(prefix="/api/auth", tags=["auth"])
 class ProfileInput(BaseModel):
     display_name: str | None = Field(default=None, max_length=200)
     affiliation: str | None = Field(default=None, max_length=300)
+    # ROR ID: bo'sh satr — bog'lanishni olib tashlash; berilsa nom ROR'dan olinadi.
+    affiliation_ror: str | None = Field(default=None, max_length=40)
     scholar_url: HttpUrl | None = None
 
 
@@ -1181,13 +1184,54 @@ def auth_update_me(
         if not name:
             raise HTTPException(status_code=422, detail="Ism bo‘sh bo‘lmasin")
         user.display_name = name
-    if payload.affiliation is not None:
-        user.affiliation = payload.affiliation.strip() or None
+    if payload.affiliation_ror:
+        ror_id = ror_service.normalise_id(payload.affiliation_ror)
+        if ror_id is None:
+            raise HTTPException(status_code=422, detail="ROR ID noto‘g‘ri formatda")
+        if ror_id != user.affiliation_ror:
+            try:
+                organization = ror_service.lookup(ror_id)
+            except ror_service.RorUnavailable as failure:
+                raise HTTPException(
+                    status_code=503, detail="ROR vaqtincha javob bermayapti. Birozdan so‘ng urinib ko‘ring."
+                ) from failure
+            if organization is None:
+                raise HTTPException(status_code=422, detail="Bu ROR ID registrda topilmadi")
+            user.affiliation_ror = ror_id
+            # Nom foydalanuvchi yuborgan matndan emas, registrdan olinadi.
+            user.affiliation = organization["name"][:300]
+    elif payload.affiliation is not None:
+        text = payload.affiliation.strip() or None
+        if text != user.affiliation or payload.affiliation_ror == "":
+            # Matn qo'lda o'zgartirilgan — endi u ROR yozuviga mos kelmaydi.
+            user.affiliation_ror = None
+        user.affiliation = text
+    elif payload.affiliation_ror == "":
+        user.affiliation_ror = None
     if payload.scholar_url is not None:
         user.scholar_url = str(payload.scholar_url)
     db.commit()
     db.refresh(user)
     return {"user": auth_service.user_payload(user)}
+
+
+@auth.get("/ror/search")
+def auth_ror_search(
+    q: str = Query(default="", max_length=ror_service.MAX_QUERY_LENGTH),
+    _: User = Depends(require_user),
+) -> dict[str, object]:
+    """Ish joyini ROR registridan qidirish.
+
+    Faqat kirgan foydalanuvchi uchun: ROR limiti butun sayt uchun umumiy,
+    anonim so'rovlar uni tez tugatib qo'yardi.
+    """
+    try:
+        return {"items": ror_service.search(q)}
+    except ror_service.RorUnavailable as failure:
+        logger.warning("ROR qidiruvi yiqildi: %s", failure)
+        raise HTTPException(
+            status_code=503, detail="ROR vaqtincha javob bermayapti. Nomni qo‘lda yozishingiz mumkin."
+        ) from failure
 
 
 class ClaimInput(BaseModel):

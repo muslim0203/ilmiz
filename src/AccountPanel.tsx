@@ -24,6 +24,7 @@ import {
   updateProfile,
   type AuthUser,
 } from "@/authApi";
+import AffiliationPicker from "@/components/affiliation-picker";
 import { monogram } from "@/lib/format";
 import MyArticles from "@/MyArticles";
 
@@ -36,7 +37,12 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState({ displayName: "", affiliation: "", scholarUrl: "" });
+  const [draft, setDraft] = useState({
+    displayName: "",
+    affiliation: "",
+    affiliationRor: null as string | null,
+    scholarUrl: "",
+  });
 
   useEffect(() => {
     let active = true;
@@ -49,6 +55,7 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
           setDraft({
             displayName: currentUser.displayName,
             affiliation: currentUser.affiliation ?? "",
+            affiliationRor: currentUser.affiliationRor,
             scholarUrl: currentUser.scholarUrl ?? "",
           });
         }
@@ -71,10 +78,17 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
       const saved = await updateProfile({
         display_name: draft.displayName.trim(),
         affiliation: draft.affiliation.trim(),
+        // Bo'sh satr serverda bog'lanishni uzadi; tanlangan bo'lsa nom ROR'dan olinadi.
+        affiliation_ror: draft.affiliationRor ?? "",
         // Bo'sh havola yuborilsa validatsiya yiqiladi, shuning uchun faqat to'lganini yuboramiz.
         ...(draft.scholarUrl.trim() ? { scholar_url: draft.scholarUrl.trim() } : {}),
       });
       setUser(saved);
+      setDraft((current) => ({
+        ...current,
+        affiliation: saved.affiliation ?? "",
+        affiliationRor: saved.affiliationRor,
+      }));
       setMessage("Profil saqlandi.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Saqlanmadi");
@@ -205,11 +219,12 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
 
             <div className="space-y-2">
               <Label htmlFor="affiliation">Ish joyi</Label>
-              <Input
+              <AffiliationPicker
                 id="affiliation"
-                value={draft.affiliation}
-                onChange={(event) => setDraft({ ...draft, affiliation: event.target.value })}
-                placeholder="Masalan: Toshkent davlat universiteti"
+                value={{ name: draft.affiliation, rorId: draft.affiliationRor }}
+                onChange={(next) =>
+                  setDraft((current) => ({ ...current, affiliation: next.name, affiliationRor: next.rorId }))
+                }
               />
             </div>
 

@@ -364,6 +364,151 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(body["affiliation"], "Toshkent davlat universiteti")
         self.assertIn("scholar.google.com", body["scholarUrl"])
 
+    # --- ROR ish joyi ---------------------------------------------------
+
+    ROR_RECORD = {
+        "id": "https://ror.org/01bmg2a15",
+        "names": [
+            {"lang": None, "types": ["ror_display"], "value": "Tashkent State Technical University"},
+            {"lang": "uz", "types": ["label"], "value": "Toshkent davlat texnika universiteti"},
+            {"lang": None, "types": ["acronym"], "value": "TDTU"},
+        ],
+        "locations": [
+            {"geonames_id": 1512569, "geonames_details": {
+                "name": "Tashkent", "country_name": "Uzbekistan", "country_code": "UZ"}},
+        ],
+        "status": "active",
+    }
+
+    def session_for(self, subject: str) -> None:
+        user = self.make_user(subject=subject)
+        with SessionLocal() as db:
+            token = auth_service.create_session(db, db.get(User, user.id))
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+
+    def fake_ror(self, responses: dict[str, "httpx.Response"], seen: list[str] | None = None):
+        import httpx
+
+        from backend.app.services import ror as ror_service
+
+        ror_service.clear_cache()
+        self.addCleanup(ror_service.clear_cache)
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                self.headers = kwargs.get("headers") or {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def get(self, url, params=None):
+                key = url + (f"?{params['query']}" if params else "")
+                if seen is not None:
+                    seen.append(key)
+                return responses[key]
+
+        return patch.object(ror_service.httpx, "Client", FakeClient)
+
+    def test_ror_id_normalisation(self) -> None:
+        from backend.app.services import ror as ror_service
+
+        self.assertEqual(ror_service.normalise_id("https://ror.org/01BMG2A15"), "01bmg2a15")
+        self.assertEqual(ror_service.normalise_id("01bmg2a15"), "01bmg2a15")
+        self.assertIsNone(ror_service.normalise_id("11bmg2a15"))  # 0 bilan boshlanmaydi
+        self.assertIsNone(ror_service.normalise_id("01bmg2a1"))
+        self.assertIsNone(ror_service.normalise_id("https://evil.example/01bmg2a15"))
+
+    def test_ror_search_requires_a_session(self) -> None:
+        self.assertEqual(self.client.get("/api/auth/ror/search?q=Tashkent").status_code, 401)
+
+    def test_ror_search_returns_compact_items_and_caches(self) -> None:
+        import httpx
+
+        from backend.app.services import ror as ror_service
+
+        self.session_for("0000-0002-1825-0110")
+        seen: list[str] = []
+        responses = {
+            f"{ror_service.API}?Tashkent technical": httpx.Response(
+                200, json={"items": [self.ROR_RECORD]}, request=httpx.Request("GET", "https://x")),
+        }
+        with self.fake_ror(responses, seen):
+            first = self.client.get("/api/auth/ror/search?q=Tashkent technical").json()
+            self.client.get("/api/auth/ror/search?q=tashkent  TECHNICAL").json()
+            short = self.client.get("/api/auth/ror/search?q=Ta").json()
+        self.assertEqual(first["items"], [{
+            "id": "01bmg2a15",
+            "name": "Tashkent State Technical University",
+            "localName": "Toshkent davlat texnika universiteti",
+            "acronym": "TDTU",
+            "city": "Tashkent",
+            "country": "Uzbekistan",
+            "countryCode": "UZ",
+        }])
+        self.assertEqual(len(seen), 1, "bir xil qidiruv qayta yuborilmasligi kerak")
+        self.assertEqual(short["items"], [])
+
+    def test_ror_outage_is_503_not_500(self) -> None:
+        import httpx
+
+        from backend.app.services import ror as ror_service
+
+        self.session_for("0000-0002-1825-0111")
+        responses = {
+            f"{ror_service.API}?Samarkand": httpx.Response(429, request=httpx.Request("GET", "https://x")),
+        }
+        with self.fake_ror(responses):
+            response = self.client.get("/api/auth/ror/search?q=Samarkand")
+        self.assertEqual(response.status_code, 503)
+
+    def test_profile_links_affiliation_to_ror_with_registry_name(self) -> None:
+        """Nom foydalanuvchi yuborganidan emas, ROR yozuvidan olinadi."""
+        import httpx
+
+        from backend.app.services import ror as ror_service
+
+        self.session_for("0000-0002-1825-0112")
+        responses = {
+            f"{ror_service.API}/01bmg2a15": httpx.Response(
+                200, json=self.ROR_RECORD, request=httpx.Request("GET", "https://x")),
+        }
+        with self.fake_ror(responses):
+            response = self.client.patch(
+                "/api/auth/me",
+                json={"affiliation": "Soxta nom", "affiliation_ror": "https://ror.org/01bmg2a15"},
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()["user"]
+        self.assertEqual(body["affiliationRor"], "01bmg2a15")
+        self.assertEqual(body["affiliation"], "Tashkent State Technical University")
+
+        # Matn qo'lda o'zgartirilsa bog'lanish uziladi.
+        body = self.client.patch(
+            "/api/auth/me", json={"affiliation": "Boshqa institut", "affiliation_ror": ""}
+        ).json()["user"]
+        self.assertIsNone(body["affiliationRor"])
+        self.assertEqual(body["affiliation"], "Boshqa institut")
+
+    def test_profile_rejects_unknown_or_malformed_ror_id(self) -> None:
+        import httpx
+
+        from backend.app.services import ror as ror_service
+
+        self.session_for("0000-0002-1825-0113")
+        malformed = self.client.patch("/api/auth/me", json={"affiliation_ror": "not-a-ror"})
+        self.assertEqual(malformed.status_code, 422)
+
+        responses = {
+            f"{ror_service.API}/05a28rw58": httpx.Response(404, request=httpx.Request("GET", "https://x")),
+        }
+        with self.fake_ror(responses):
+            unknown = self.client.patch("/api/auth/me", json={"affiliation_ror": "05a28rw58"})
+        self.assertEqual(unknown.status_code, 422)
+        self.assertIsNone(self.client.get("/api/auth/me").json()["user"]["affiliationRor"])
+
     def test_blank_name_is_rejected(self) -> None:
         user = self.make_user(subject="0000-0002-1825-0101")
         with SessionLocal() as db:

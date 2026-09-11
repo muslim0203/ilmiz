@@ -258,8 +258,10 @@ def upsert_user(db: Session, provider: str, identity: ProviderIdentity) -> User:
         user.email = identity.email
     if identity.orcid:
         user.orcid = identity.orcid
-    if identity.affiliation:
+    if identity.affiliation and identity.affiliation != user.affiliation:
         user.affiliation = identity.affiliation
+        # Eski ROR bog'lanishi boshqa tashkilotga tegishli bo'lib qolardi.
+        user.affiliation_ror = None
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -366,6 +368,7 @@ def user_payload(user: User) -> dict[str, object]:
         "email": user.email,
         "orcid": user.orcid,
         "affiliation": user.affiliation,
+        "affiliationRor": user.affiliation_ror,
         "scholarUrl": user.scholar_url,
         "createdAt": user.created_at.isoformat(),
         "lastLoginAt": user.last_login_at.isoformat() if user.last_login_at else None,

@@ -62,7 +62,11 @@ export default function PrivacyPage() {
           <li>provayder nomi (ORCID yoki Google) va undagi barqaror identifikatoringiz;</li>
           <li>ORCID iD — agar ORCID orqali kirgan bo‘lsangiz;</li>
           <li>elektron pochta manzili va ko‘rsatiladigan ism;</li>
-          <li>ish joyi (affiliatsiya) — agar provayder uni bergan bo‘lsa;</li>
+          <li>
+            ish joyi (affiliatsiya) va, agar ro‘yxatdan tanlagan bo‘lsangiz, uning ROR
+            identifikatori. Ish joyini qidirganingizda yozgan matningiz server orqali ror.org
+            registriga yuboriladi — ismingiz yoki boshqa ma’lumotingiz yuborilmaydi;
+          </li>
           <li>hisob yaratilgan va oxirgi marta kirilgan vaqt.</li>
         </ul>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

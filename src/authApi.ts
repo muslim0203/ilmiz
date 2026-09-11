@@ -8,6 +8,7 @@ export type AuthUser = {
   email: string | null;
   orcid: string | null;
   affiliation: string | null;
+  affiliationRor: string | null;
   scholarUrl: string | null;
   createdAt: string;
   lastLoginAt: string | null;
@@ -16,8 +17,28 @@ export type AuthUser = {
 export type ProfileDraft = {
   display_name?: string;
   affiliation?: string;
+  /** Bo'sh satr — ROR bog'lanishini olib tashlaydi. */
+  affiliation_ror?: string;
   scholar_url?: string;
 };
+
+export type RorOrganization = {
+  id: string;
+  name: string;
+  localName: string | null;
+  acronym: string | null;
+  city: string | null;
+  country: string | null;
+  countryCode: string | null;
+};
+
+export async function searchRor(query: string, signal?: AbortSignal): Promise<RorOrganization[]> {
+  const body = await request<{ items: RorOrganization[] }>(
+    `/api/auth/ror/search?q=${encodeURIComponent(query)}`,
+    { signal },
+  );
+  return body.items;
+}
 
 /** Sessiya cookie'da bo'lgani uchun barcha so'rovlarda `credentials` kerak. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
