@@ -1184,6 +1184,7 @@ def auth_update_me(
         if not name:
             raise HTTPException(status_code=422, detail="Ism bo‘sh bo‘lmasin")
         user.display_name = name
+    affiliation_before = (user.affiliation, user.affiliation_ror)
     if payload.affiliation_ror:
         ror_id = ror_service.normalise_id(payload.affiliation_ror)
         if ror_id is None:
@@ -1208,6 +1209,9 @@ def auth_update_me(
         user.affiliation = text
     elif payload.affiliation_ror == "":
         user.affiliation_ror = None
+    if (user.affiliation, user.affiliation_ror) != affiliation_before:
+        # Foydalanuvchi o'zi o'zgartirdi — ORCID bilan kirganda ustidan yozilmaydi.
+        user.affiliation_source = "manual"
     if payload.scholar_url is not None:
         user.scholar_url = str(payload.scholar_url)
     db.commit()

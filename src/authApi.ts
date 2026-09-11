@@ -9,6 +9,8 @@ export type AuthUser = {
   orcid: string | null;
   affiliation: string | null;
   affiliationRor: string | null;
+  /** `orcid` — kirishda ORCID yozuvidan olingan; `manual` — foydalanuvchi o'zi kiritgan. */
+  affiliationSource: "orcid" | "manual" | null;
   scholarUrl: string | null;
   createdAt: string;
   lastLoginAt: string | null;

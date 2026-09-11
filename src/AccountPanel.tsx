@@ -226,6 +226,12 @@ export default function AccountPanel({ onClose }: { onClose: () => void }) {
                   setDraft((current) => ({ ...current, affiliation: next.name, affiliationRor: next.rorId }))
                 }
               />
+              {user.affiliationSource === "orcid" && draft.affiliation === (user.affiliation ?? "") && (
+                <p className="text-xs text-muted-foreground">
+                  ORCID profilingizdagi joriy ish joyidan olindi. O‘zingiz o‘zgartirsangiz, keyingi
+                  kirishlarda ustidan yozilmaydi.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

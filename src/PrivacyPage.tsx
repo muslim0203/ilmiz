@@ -65,7 +65,9 @@ export default function PrivacyPage() {
           <li>
             ish joyi (affiliatsiya) va, agar ro‘yxatdan tanlagan bo‘lsangiz, uning ROR
             identifikatori. Ish joyini qidirganingizda yozgan matningiz server orqali ror.org
-            registriga yuboriladi — ismingiz yoki boshqa ma’lumotingiz yuborilmaydi;
+            registriga yuboriladi — ismingiz yoki boshqa ma’lumotingiz yuborilmaydi. ORCID orqali
+            kirganda, ish joyini o‘zingiz kiritmagan bo‘lsangiz, u ORCID yozuvingizdagi ochiq joriy
+            ish joyidan olinadi;
           </li>
           <li>hisob yaratilgan va oxirgi marta kirilgan vaqt.</li>
         </ul>

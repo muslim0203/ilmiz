@@ -438,6 +438,10 @@ class User(Base):
     # Ish joyi ROR'dan tanlangan bo'lsa uning ID'si (`05a28rw58`). Qo'lda
     # yozilgan ish joyida bo'sh; matn o'zgarsa bog'lanish o'chiriladi.
     affiliation_ror: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    # Ish joyi qayerdan: "orcid" — kirishda ORCID yozuvidan, "manual" — foydalanuvchi
+    # o'zi kiritgan. Qo'lda kiritilgani (va manbasi noma'lum eski qiymat) ORCID
+    # bilan kirganda ustidan yozilmaydi.
+    affiliation_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Google Scholar'da OAuth yo'q, shuning uchun profil havolasi qo'lda kiritiladi.
     scholar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

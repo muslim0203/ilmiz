@@ -74,7 +74,9 @@ Sozlanmagan provayder kirish oynasida ko‘rsatilmaydi. Endpointlar:
 - `GET /api/auth/{provider}/start` — OAuth oqimini boshlash
 - `GET /api/auth/{provider}/callback` — sessiya cookie’sini o‘rnatadi
 - `GET /api/auth/me` — joriy foydalanuvchi (kirmagan bo‘lsa `null`)
-- `PATCH /api/auth/me` — ism, ish joyi (`affiliation_ror` bilan ROR'ga bog'lanadi), Scholar havolasi
+- `PATCH /api/auth/me` — ism, ish joyi (`affiliation_ror` bilan ROR'ga bog'lanadi), Scholar havolasi.
+  ORCID bilan kirganda ish joyi ORCID yozuvidagi joriy ish joyidan to'ldiriladi
+  (`affiliationSource: "orcid"`); foydalanuvchi o'zi kiritgani ustidan yozilmaydi.
 - `GET /api/auth/ror/search?q=` — ish joyini ROR registridan qidirish (kirgan foydalanuvchi uchun;
   `ROR_CLIENT_ID` bo'lsa limit yuqoriroq)
 - `POST /api/auth/logout` — sessiyani bekor qiladi

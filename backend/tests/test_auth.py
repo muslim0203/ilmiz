@@ -509,6 +509,137 @@ class AuthTest(unittest.TestCase):
         self.assertEqual(unknown.status_code, 422)
         self.assertIsNone(self.client.get("/api/auth/me").json()["user"]["affiliationRor"])
 
+    # --- ORCID'dan ish joyi ---------------------------------------------
+
+    @staticmethod
+    def employment(name: str, *, start: int = 2020, end: int | None = None,
+                   ror: str | None = None, source: str = "ROR") -> dict:
+        organization: dict = {"name": name, "address": {"city": "Tashkent", "country": "UZ"}}
+        if ror:
+            organization["disambiguated-organization"] = {
+                "disambiguated-organization-identifier": ror, "disambiguation-source": source}
+        return {"summaries": [{"employment-summary": {
+            "start-date": {"year": {"value": str(start)}, "month": None, "day": None},
+            "end-date": {"year": {"value": str(end)}} if end else None,
+            "organization": organization,
+        }}]}
+
+    def orcid_login(self, employments, *, orcid: str, status: int = 200) -> dict:
+        """ORCID token almashuvi + `/employments` so'rovi mock bilan; natija qatori."""
+        import httpx
+
+        seen: list[tuple[str, dict]] = []
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def post(self, *args, **kwargs):
+                return httpx.Response(
+                    200, json={"orcid": orcid, "name": "Orcid Foydalanuvchi", "access_token": "tok"},
+                    request=httpx.Request("POST", "https://x"))
+
+            def get(self, url, headers=None, **kwargs):
+                seen.append((url, headers or {}))
+                if isinstance(employments, Exception):
+                    raise employments
+                return httpx.Response(status, json=employments, request=httpx.Request("GET", url))
+
+        self.configure()
+        with patch.object(auth_service.httpx, "Client", FakeClient):
+            identity = auth_service.exchange_code("orcid", "code")
+        with SessionLocal() as db:
+            user = auth_service.upsert_user(db, "orcid", identity)
+            return {"affiliation": user.affiliation, "ror": user.affiliation_ror,
+                    "source": user.affiliation_source, "seen": seen}
+
+    def test_current_employment_selection(self) -> None:
+        from backend.app.services import orcid_profile
+
+        payload = {"affiliation-group": [
+            self.employment("Eski institut", start=2010, end=2015, ror="https://ror.org/05a28rw58"),
+            self.employment("Yangi markaz", start=2016, ror="5679", source="RINGGOLD"),
+            self.employment("Tashkent State Technical University", start=2016, ror="https://ror.org/01bmg2a15"),
+        ]}
+        self.assertEqual(
+            orcid_profile.current_employment(payload),
+            orcid_profile.Affiliation("Tashkent State Technical University", "01bmg2a15"),
+        )
+        newer = {"affiliation-group": payload["affiliation-group"] + [self.employment("Eng yangi joy", start=2023)]}
+        self.assertEqual(orcid_profile.current_employment(newer), orcid_profile.Affiliation("Eng yangi joy"))
+        self.assertIsNone(orcid_profile.current_employment({"affiliation-group": [self.employment("X", end=2019)]}))
+        self.assertIsNone(orcid_profile.current_employment({}))
+
+    def test_orcid_login_fills_affiliation_from_registry(self) -> None:
+        from backend.app.services import ror as ror_service
+
+        payload = {"affiliation-group": [self.employment("TSTU", ror="https://ror.org/01bmg2a15")]}
+        registry = {"id": "01bmg2a15", "name": "Tashkent State Technical University"}
+        with patch.object(ror_service, "lookup", return_value=registry):
+            result = self.orcid_login(payload, orcid="0000-0002-1825-0120")
+        self.assertEqual(result["affiliation"], "Tashkent State Technical University")
+        self.assertEqual(result["ror"], "01bmg2a15")
+        self.assertEqual(result["source"], "orcid")
+        url, headers = result["seen"][0]
+        self.assertEqual(url, "https://pub.orcid.org/v3.0/0000-0002-1825-0120/employments")
+        self.assertEqual(headers.get("Authorization"), "Bearer tok")
+
+    def test_unconfirmed_ror_is_not_linked(self) -> None:
+        from backend.app.services import ror as ror_service
+
+        payload = {"affiliation-group": [self.employment("TSTU", ror="https://ror.org/01bmg2a15")]}
+        with patch.object(ror_service, "lookup", side_effect=ror_service.RorUnavailable("429")):
+            result = self.orcid_login(payload, orcid="0000-0002-1825-0121")
+        self.assertEqual((result["affiliation"], result["ror"]), ("TSTU", None))
+
+    def test_orcid_employment_failure_does_not_block_login(self) -> None:
+        import httpx
+
+        down = self.orcid_login(httpx.ConnectError("down"), orcid="0000-0002-1825-0122")
+        broken = self.orcid_login({"error": "x"}, status=500, orcid="0000-0002-1825-0123")
+        for result in (down, broken):
+            self.assertIsNone(result["affiliation"])
+            self.assertIsNone(result["source"])
+
+    def test_orcid_updates_only_its_own_affiliation(self) -> None:
+        orcid = "0000-0002-1825-0124"
+        first = self.orcid_login({"affiliation-group": [self.employment("Birinchi universitet")]}, orcid=orcid)
+        self.assertEqual((first["affiliation"], first["source"]), ("Birinchi universitet", "orcid"))
+        # ORCID'da ish joyi almashsa, avtomatik qiymat ham yangilanadi.
+        second = self.orcid_login(
+            {"affiliation-group": [self.employment("Ikkinchi universitet", start=2024)]}, orcid=orcid)
+        self.assertEqual(second["affiliation"], "Ikkinchi universitet")
+
+        with SessionLocal() as db:
+            token = auth_service.create_session(db, db.scalar(select(User).where(User.orcid == orcid)))
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        # Ish joyiga tegmagan saqlash manbani o'zgartirmaydi.
+        body = self.client.patch("/api/auth/me", json={
+            "display_name": "Yangi Ism", "affiliation": "Ikkinchi universitet", "affiliation_ror": ""}).json()["user"]
+        self.assertEqual(body["affiliationSource"], "orcid")
+        # Foydalanuvchi o'zi o'zgartirgach, kirish uni ustidan yozmaydi.
+        body = self.client.patch("/api/auth/me", json={
+            "affiliation": "O'zim yozgan institut", "affiliation_ror": ""}).json()["user"]
+        self.assertEqual(body["affiliationSource"], "manual")
+        third = self.orcid_login({"affiliation-group": [self.employment("Uchinchi joy", start=2025)]}, orcid=orcid)
+        self.assertEqual((third["affiliation"], third["source"]), ("O'zim yozgan institut", "manual"))
+
+    def test_existing_affiliation_without_source_is_kept(self) -> None:
+        """Migratsiyadan oldingi qiymatlar foydalanuvchiniki deb hisoblanadi."""
+        orcid = "0000-0002-1825-0125"
+        user = self.make_user(subject=orcid)
+        with SessionLocal() as db:
+            db.get(User, user.id).affiliation = "Avval kiritilgan"
+            db.commit()
+        result = self.orcid_login({"affiliation-group": [self.employment("ORCID'dagi joy")]}, orcid=orcid)
+        self.assertEqual((result["affiliation"], result["source"]), ("Avval kiritilgan", None))
+
     def test_blank_name_is_rejected(self) -> None:
         user = self.make_user(subject="0000-0002-1825-0101")
         with SessionLocal() as db:

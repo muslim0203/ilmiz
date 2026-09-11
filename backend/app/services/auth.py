@@ -27,6 +27,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from ..models import OAuthState, User, UserSession
+from . import orcid_profile
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class ProviderIdentity:
     email: str | None = None
     orcid: str | None = None
     affiliation: str | None = None
+    affiliation_ror: str | None = None
 
 
 def _env(name: str) -> str:
@@ -206,15 +208,18 @@ def exchange_code(provider: str, code: str, *, timeout: int = 20) -> ProviderIde
         token = response.json()
 
         if provider == "orcid":
-            # ORCID token javobining o'zida iD va ism bo'ladi — qo'shimcha
-            # so'rov shart emas.
+            # ORCID token javobining o'zida iD va ism bo'ladi. Ish joyi
+            # alohida so'rov bilan olinadi; u yiqilsa kirish davom etadi.
             orcid = _normalise_orcid(str(token.get("orcid") or ""))
             if not orcid:
                 raise RuntimeError("ORCID javobida iD yo'q")
+            affiliation = orcid_profile.fetch_current(client, orcid, str(token.get("access_token") or ""))
             return ProviderIdentity(
                 subject=orcid,
                 display_name=str(token.get("name") or orcid),
                 orcid=orcid,
+                affiliation=affiliation.name if affiliation else None,
+                affiliation_ror=affiliation.ror_id if affiliation else None,
             )
 
         access_token = token.get("access_token")
@@ -258,10 +263,13 @@ def upsert_user(db: Session, provider: str, identity: ProviderIdentity) -> User:
         user.email = identity.email
     if identity.orcid:
         user.orcid = identity.orcid
-    if identity.affiliation and identity.affiliation != user.affiliation:
+    # Provayderdan kelgan ish joyi faqat bo'sh joyni yoki avval ham shu yo'l
+    # bilan to'ldirilganini yangilaydi — foydalanuvchi yozganini emas.
+    autofilled = user.affiliation_source == provider
+    if identity.affiliation and (autofilled or (user.affiliation_source is None and not user.affiliation)):
         user.affiliation = identity.affiliation
-        # Eski ROR bog'lanishi boshqa tashkilotga tegishli bo'lib qolardi.
-        user.affiliation_ror = None
+        user.affiliation_ror = identity.affiliation_ror
+        user.affiliation_source = provider
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
@@ -369,6 +377,7 @@ def user_payload(user: User) -> dict[str, object]:
         "orcid": user.orcid,
         "affiliation": user.affiliation,
         "affiliationRor": user.affiliation_ror,
+        "affiliationSource": user.affiliation_source,
         "scholarUrl": user.scholar_url,
         "createdAt": user.created_at.isoformat(),
         "lastLoginAt": user.last_login_at.isoformat() if user.last_login_at else None,
