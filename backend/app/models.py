@@ -198,6 +198,21 @@ class Article(Base):
             text("publication_year DESC"),
             text("id DESC"),
         ),
+        # "Eng yangisi birinchi" — nashr sanasi bo'yicha (`services/feed.py`).
+        # Ifoda `feed.PUBLISHED_ON` bilan aynan bir xil bo'lishi shart.
+        Index(
+            "ix_articles_published",
+            "is_deleted",
+            text("substr(publication_date, 1, 10) DESC"),
+            text("id DESC"),
+        ),
+        Index(
+            "ix_articles_journal_published",
+            "journal_id",
+            "is_deleted",
+            text("substr(publication_date, 1, 10) DESC"),
+            text("id DESC"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

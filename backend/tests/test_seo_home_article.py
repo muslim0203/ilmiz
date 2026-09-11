@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -65,6 +65,21 @@ class HomeAndArticleSeoTest(unittest.TestCase):
         self.engine.dispose()
         seo.reset_cache()
         self.env.stop()
+
+    # --- ro'yxat tartibi ----------------------------------------------------------
+
+    def test_article_list_is_ordered_by_publication_date(self) -> None:
+        """Keyin qo'shilgan, lekin avvalroq nashr etilgan maqola pastda turadi."""
+        journal_id = self.db.scalar(select(Journal.id).where(Journal.slug == "fan-sportga"))
+        for title, date in (("Aprel maqolasi", "2026-04-10"), ("Kelajak maqolasi", "2099-01-01"),
+                            ("Mart maqolasi", "2026-03-01")):
+            self.db.add(Article(journal_id=journal_id, title=title, normalized_title=title.lower(),
+                                authors=["A"], publication_year=int(date[:4]), publication_date=date))
+        self.db.commit()
+        seo.reset_cache()
+        html = self.client.get("/maqolalar").text
+        positions = [html.index(title) for title in ("Aprel maqolasi", "Basketbol 1", "Mart maqolasi", "Kelajak maqolasi")]
+        self.assertEqual(positions, sorted(positions))
 
     # --- bosh sahifa ------------------------------------------------------------
 

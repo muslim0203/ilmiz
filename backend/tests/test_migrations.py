@@ -68,6 +68,8 @@ class MigrationTest(unittest.TestCase):
         connection.close()
         self.assertIn("ix_articles_feed", names)
         self.assertIn("ix_articles_journal_feed", names)
+        self.assertIn("ix_articles_published", names)
+        self.assertIn("ix_articles_journal_published", names)
 
     def test_declared_indexes_exist(self) -> None:
         """Modelda `index=True` bo'lgan ustunning indeksi bazada bo'lsin."""

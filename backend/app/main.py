@@ -32,6 +32,7 @@ from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
 from .services import auth as auth_service
 from .services import authorship
+from .services import feed
 from .services import journal_edit
 from .services import ror as ror_service
 from .services import search_index
@@ -686,7 +687,8 @@ def list_articles(
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
-    statement = select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False)).order_by(Article.publication_year.desc(), Article.id.desc())
+    statement = select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False))
+    ranked = False
     if q:
         # FTS5 indeksi bo'lsa — mos kelish bo'yicha tartiblangan tez qidiruv.
         # Bo'lmasa (PostgreSQL yoki migratsiyasiz baza) eski yo'l ishlaydi:
@@ -695,6 +697,7 @@ def list_articles(
         expression = search_index.match_expression(q) if search_index.available(db) else None
         if expression:
             statement = search_index.apply(statement, expression)
+            ranked = True
         else:
             for word in query_words(q):
                 statement = statement.where(
@@ -710,7 +713,12 @@ def list_articles(
     if allowed is not None:
         statement = statement.where(Article.journal_id.in_(allowed))
     response.headers["X-Total-Count"] = str(_total_of(db, statement))
-    return [article_payload(article) for article in db.scalars(statement.offset(offset).limit(limit))]
+    if ranked:
+        articles = db.scalars(statement.offset(offset).limit(limit))
+    else:
+        # Mos kelish darajasi yo'q — eng yangi nashr birinchi.
+        articles = feed.page(db, statement, offset=offset, limit=limit)
+    return [article_payload(article) for article in articles]
 
 
 @app.get("/api/articles/{article_id}")

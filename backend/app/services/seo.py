@@ -27,6 +27,7 @@ from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
 from .translit import alternate_names
 from .citations import citation_formats
 from .payloads import article_payload
+from . import feed
 from . import search_index
 
 SITE_NAME = "IlmIz"
@@ -558,13 +559,11 @@ def _home(db: Session) -> PageMeta:
         select(Journal).where(Journal.id.in_([id for id, _ in sorted(counts.items(), key=lambda row: -row[1])[:24]]))
     ).all()
     top.sort(key=lambda journal: -counts.get(journal.id, 0))
-    latest = db.scalars(
-        select(Article)
-        .options(selectinload(Article.journal))
-        .where(Article.is_deleted.is_(False))
-        .order_by(Article.publication_year.desc(), Article.id.desc())
-        .limit(12)
-    ).all()
+    latest = feed.page(
+        db,
+        select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False)),
+        limit=12,
+    )
     added_year, added = _recently_added(db)
     harvested = _latest_harvest(db)
     # 24 soha + ~40 shahar uchun jurnal sanoqlari — har so'rovda 250 ms olardi.
@@ -872,15 +871,14 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         select(Article)
         .options(selectinload(Article.journal))
         .where(Article.journal_id == journal.id, Article.is_deleted.is_(False))
-        .order_by(Article.publication_year.desc(), Article.id.desc())
     )
     if year:
         article_query = article_query.where(Article.publication_year == year)
-    selected_total = db.scalar(select(func.count()).select_from(article_query.order_by(None).subquery())) or 0
+    selected_total = db.scalar(select(func.count()).select_from(article_query.subquery())) or 0
     base = journal_year_path(slug, year) if year else journal_path(slug)
     if (year and not selected_total) or page > max(1, -(-selected_total // ARTICLES_PER_PAGE)):
         return _not_found(base if page == 1 else f"{base}?sahifa={page}")
-    articles = db.scalars(article_query.offset((page - 1) * ARTICLES_PER_PAGE).limit(ARTICLES_PER_PAGE)).all()
+    articles = feed.page(db, article_query, offset=(page - 1) * ARTICLES_PER_PAGE, limit=ARTICLES_PER_PAGE)
 
     city = canonical_city(journal.city)
     issn = journal.issn or journal.eissn or ""
@@ -1180,14 +1178,12 @@ def _article_list(db: Session, page: int, *, recent: bool = False) -> PageMeta:
     total = (db.scalar(select(func.count()).select_from(statement.subquery())) or 0) if recent else _stats(db)[1]
     if page > max(1, -(-total // ARTICLES_PER_PAGE)):
         return _not_found(f"{base}?sahifa={page}")
-    articles = db.scalars(
-        statement
-        .options(selectinload(Article.journal))
-        .where(Article.is_deleted.is_(False))
-        .order_by(Article.publication_year.desc(), Article.id.desc())
-        .offset((page - 1) * ARTICLES_PER_PAGE)
-        .limit(ARTICLES_PER_PAGE)
-    ).all()
+    articles = feed.page(
+        db,
+        statement.options(selectinload(Article.journal)),
+        offset=(page - 1) * ARTICLES_PER_PAGE,
+        limit=ARTICLES_PER_PAGE,
+    )
     heading = "So‘nggi 14 kunda indeksga qo‘shilgan maqolalar" if recent else "O‘zbekiston ilmiy maqolalari bazasi"
     description = (
         f"OAK jurnallaridan yig‘ilgan {total} ta ilmiy maqola: sarlavha, mualliflar, "
@@ -1378,12 +1374,12 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         field_ids = _journal_ids_for(db, field=article.fields[0]) or set()
         field_ids.discard(journal.id if journal else -1)
         if field_ids:
-            related = db.scalars(
+            related = feed.page(
+                db,
                 select(Article).options(selectinload(Article.journal))
-                .where(Article.journal_id.in_(field_ids), Article.is_deleted.is_(False))
-                .order_by(Article.publication_year.desc(), Article.id.desc())
-                .limit(6)
-            ).all()
+                .where(Article.journal_id.in_(field_ids), Article.is_deleted.is_(False)),
+                limit=6,
+            )
             if related:
                 parts.append(f"<h2>{e(article.fields[0])} sohasidagi boshqa maqolalar</h2>")
                 parts.append(f'<ul class="seo-list">{"".join(_article_item(item) for item in related)}</ul>')
@@ -1588,13 +1584,12 @@ def _search_page(db: Session, query: str) -> PageMeta:
             select(Article)
             .options(selectinload(Article.journal))
             .where(Article.is_deleted.is_(False))
-            .order_by(Article.publication_year.desc(), Article.id.desc())
         )
         for word in query_words(query):
             statement = statement.where(
                 Article.search_text.like(f"%{escape_like(word)}%", escape=LIKE_ESCAPE)
             )
-        articles = db.scalars(statement.limit(20)).all()
+        articles = feed.page(db, statement, limit=20)
 
     heading = f"{e(query)} — qidiruv natijalari" if query else "Qidiruv"
     body = _crumbs([("Bosh sahifa", "/"), ("Qidiruv", "/qidiruv")]) + f"<h1>{heading}</h1>"
