@@ -134,6 +134,13 @@ class JournalPageContentTest(unittest.TestCase):
         # Rasmiy sayt nofollow emas.
         self.assertRegex(html, r'<a href="https://vodiynoma.uz/" rel="noopener"')
 
+    def test_telegram_submit_button_is_rendered(self) -> None:
+        """Drawer to'liq sahifaga almashganda tugma tushib qolgan edi."""
+        for path in ("/jurnal/vodiynoma", "/jurnal/vodiynoma/2025", "/jurnal/boshqa"):
+            html = self.client.get(path).text
+            self.assertIn(f'href="{seo.SUBMIT_TELEGRAM_URL}"', html, path)
+            self.assertIn("Telegram orqali maqola yuborish", html, path)
+
     def test_jsonld_periodical_is_enriched(self) -> None:
         html = self.client.get("/jurnal/vodiynoma").text
         periodical = next(item for item in json_ld(html) if item["@type"] == "Periodical")

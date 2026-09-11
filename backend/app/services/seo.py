@@ -834,6 +834,10 @@ def _dedupe(values: list[str]) -> list[str]:
     return list(seen)
 
 
+# Maqola qabul qilish uchun yagona Telegram aloqa nuqtasi.
+SUBMIT_TELEGRAM_URL = "https://t.me/zarifjon0203"
+
+
 def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1) -> PageMeta:
     journal = db.scalar(
         select(Journal).where(Journal.slug == slug).options(
@@ -976,6 +980,12 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
             parts.append(f'<p class="seo-alias">Boshqa yozuvda: {e(", ".join(aliases))}</p>')
     parts.append(
         f'<table class="seo-facts"><caption>Jurnal ma’lumotlari</caption><tbody>{facts_html}</tbody></table>'
+    )
+    # Ilgari drawer (`JournalSheet`) pastida turardi; `/jurnal/{slug}` to'liq
+    # sahifaga o'tganda tushib qolgan edi.
+    parts.append(
+        f'<p class="seo-cta"><a class="seo-button" href="{e(SUBMIT_TELEGRAM_URL)}" '
+        'rel="noopener nofollow" target="_blank">Telegram orqali maqola yuborish</a></p>'
     )
     parts.append(site_link)
 
@@ -1844,6 +1854,11 @@ white-space:nowrap;vertical-align:top;width:11rem}
 #root .seo-chip{border:1px solid rgba(128,128,128,.35);border-radius:999px;
 padding:.2rem .7rem;font-size:.82rem}
 #root .seo-pager{display:flex;gap:.6rem;flex-wrap:wrap;margin:1.5rem 0;font-size:.9rem}
+#root .seo-cta{margin:1.25rem 0 .5rem}
+#root .seo-shell a.seo-button{display:inline-flex;align-items:center;gap:.5rem;
+padding:.6rem 1.1rem;border-radius:.5rem;font-weight:600;font-size:.95rem;
+background:var(--primary,#1f5f4a);color:var(--primary-foreground,#fff)}
+#root .seo-shell a.seo-button:hover{text-decoration:none;opacity:.92}
 """.strip()
 
 
