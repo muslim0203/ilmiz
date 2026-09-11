@@ -17,10 +17,13 @@ export default function AffiliationPicker({
   id,
   value,
   onChange,
+  note,
 }: {
   id: string;
   value: AffiliationValue;
   onChange: (next: AffiliationValue) => void;
+  /** Qiymat qayerdan kelgani (masalan ORCID). Berilsa, umumiy yo'riqnoma o'rniga ko'rsatiladi. */
+  note?: string | null;
 }) {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -154,6 +157,7 @@ export default function AffiliationPicker({
       )}
 
       {value.rorId ? (
+        <>
         <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <CheckCircle2 className="size-3.5 text-success" /> ROR bilan bog‘langan:{" "}
           <a
@@ -172,10 +176,13 @@ export default function AffiliationPicker({
             <X className="size-3" /> uzish
           </button>
         </p>
+        {note && <p className="text-xs text-muted-foreground">{note}</p>}
+        </>
       ) : (
+        // Bitta izoh: qiymat manbasi ma'lum bo'lsa o'sha, aks holda umumiy yo'riqnoma.
         <p className="text-xs text-muted-foreground">
-          Yozishni boshlang va ro‘yxatdan tashkilotingizni tanlang (ROR registri). Topilmasa, nomni
-          qo‘lda qoldiring.
+          {note ??
+            "Yozishni boshlang va ro‘yxatdan tashkilotingizni tanlang (ROR registri). Topilmasa, nomni qo‘lda qoldiring."}
         </p>
       )}
     </div>
