@@ -10,6 +10,14 @@ export function shortDate(value: string): string {
   return `${date.getDate()}-${MONTHS[date.getMonth()]}`;
 }
 
+/** Sana va soat (mahalliy vaqt): "11-sen 08:08". */
+export function shortDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return `${shortDate(value)} ${time}`;
+}
+
 export function monogram(value: string): string {
   return value.slice(0, 2).toUpperCase();
 }

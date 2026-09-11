@@ -4,7 +4,7 @@ import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -269,13 +269,43 @@ class ProfileProcessInput(BaseModel):
     workers: int = Field(default=3, ge=1, le=5)
 
 
+def _utc(value: datetime | None) -> datetime | None:
+    """Bazadan kelgan vaqt UTC'da; SQLite uni zonasiz qaytaradi."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    """Zona belgisi bilan: usiz brauzer vaqtni mahalliy deb o'qib, soatni siljitardi."""
+    value = _utc(value)
+    return value.isoformat() if value else None
+
+
+def _best_source(sources: list[HarvestSource]) -> HarvestSource:
+    """Jurnal holati uchun manba: avval sog'lomi, keyin eng oxirgi muvaffaqiyatli.
+
+    Ilgari eng oxirgi o'zgargan manba olinardi — ko'pincha ishlamaydigan
+    zaxira manzil (bir jurnalga bir nechta nomzod URL audit qilinadi): 50 ta
+    sog'lom jurnalda oxirgi yangilanish vaqti bo'sh ko'rinardi.
+    """
+    oldest = datetime.min.replace(tzinfo=timezone.utc)
+    return max(
+        sources,
+        key=lambda item: (
+            item.status == "healthy",
+            _utc(item.last_success_at) or oldest,
+            _utc(item.updated_at) or oldest,
+        ),
+    )
+
+
 def source_status(journal: Journal) -> dict[str, object]:
     if not journal.harvest_sources:
         return {"oaiStatus": "missing", "oaiLastSync": None, "oaiBaseUrl": None}
-    source = sorted(journal.harvest_sources, key=lambda item: item.updated_at, reverse=True)[0]
+    source = _best_source(journal.harvest_sources)
     status = "healthy" if source.status == "healthy" else "warning"
-    last_sync = source.last_success_at.isoformat() if source.last_success_at else None
-    return {"oaiStatus": status, "oaiLastSync": last_sync, "oaiBaseUrl": source.base_url}
+    return {"oaiStatus": status, "oaiLastSync": _utc_iso(source.last_success_at), "oaiBaseUrl": source.base_url}
 
 
 def profile_payload(journal: Journal) -> dict[str, object] | None:
@@ -719,6 +749,44 @@ def list_articles(
         # Mos kelish darajasi yo'q — eng yangi nashr birinchi.
         articles = feed.page(db, statement, offset=offset, limit=limit)
     return [article_payload(article) for article in articles]
+
+
+@app.get("/api/updates")
+def recent_updates(
+    response: Response,
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    """"So'nggi yangilanishlar": yangi maqola qo'shgan oxirgi harvestlar.
+
+    Har jurnaldan bittasi — eng yangisi. Ilgari frontend buni 467 jurnalning
+    to'liq ro'yxatidan (406 KB) hisoblardi va u kelguncha blok "ma'lumot yo'q"
+    deb turardi.
+    """
+    rows = db.execute(
+        select(HarvestRun.finished_at, HarvestRun.records_created, Journal.slug, Journal.name)
+        .join(HarvestSource, HarvestSource.id == HarvestRun.source_id)
+        .join(Journal, Journal.id == HarvestSource.journal_id)
+        .where(
+            HarvestRun.status == "succeeded",
+            HarvestRun.records_created > 0,
+            HarvestRun.finished_at.is_not(None),
+        )
+        .order_by(HarvestRun.finished_at.desc())
+        .limit(limit * 10)
+    )
+    items: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for finished_at, created, slug, name in rows:
+        if slug in seen:
+            continue
+        seen.add(slug)
+        items.append({"journalId": slug, "journalName": name, "finishedAt": _utc_iso(finished_at), "created": created})
+        if len(items) == limit:
+            break
+    # Harvest kuniga bir marta ishlaydi — har sahifa ochilishida so'ramaslik uchun.
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return items
 
 
 @app.get("/api/articles/{article_id}")

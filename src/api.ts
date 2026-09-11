@@ -98,6 +98,18 @@ export async function searchArticles(
   return requestPage<Article>(`/api/articles?${params.toString()}`);
 }
 
+/** Yangi maqola qo'shgan oxirgi harvest (har jurnaldan bittasi). */
+export type RecentUpdate = {
+  journalId: string;
+  journalName: string;
+  finishedAt: string;
+  created: number;
+};
+
+export async function loadRecentUpdates(limit = 5): Promise<RecentUpdate[]> {
+  return request<RecentUpdate[]>(`/api/updates?limit=${limit}`);
+}
+
 /** Bitta maqola — `/maqola/{id}` manzili to'g'ridan-to'g'ri ochilganda. */
 export async function loadArticle(id: string): Promise<Article> {
   return request<Article>(`/api/articles/${encodeURIComponent(id)}`);

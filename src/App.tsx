@@ -25,10 +25,12 @@ import {
   loadCatalog,
   loadJournal,
   loadJournalIndex,
+  loadRecentUpdates,
   searchArticles,
   searchJournals,
   type Facets,
   type PlatformStats,
+  type RecentUpdate,
 } from "@/api";
 import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
@@ -62,9 +64,10 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { number, shortDate } from "@/lib/format";
+import { number, shortDateTime } from "@/lib/format";
 import { clip, setHead, syncHead } from "@/lib/head";
 import { cityPath, fieldPath, journalPath, slugify } from "@/lib/slug";
 import { cn } from "@/lib/utils";
@@ -220,22 +223,26 @@ function App() {
   useEffect(() => {
     if (routeQuery !== null) setQuery(routeQuery);
   }, [routeQuery]);
-  // Ilgari bu joyda o'ylab topilgan "jonli konsol" turardi: soxta vaqtlar,
-  // HTTP kodlari va yozuv sonlari. Endi haqiqiy yangilanish sanalari.
-  const recentUpdates = useMemo(
-    () =>
-      journalIndex
-        .filter((journal) => journal.oaiLastSync)
-        .sort((left, right) => (right.oaiLastSync ?? "").localeCompare(left.oaiLastSync ?? ""))
-        .slice(0, 5)
-        .map((journal) => ({
-          id: journal.id,
-          name: journal.name.length > 40 ? `${journal.name.slice(0, 40)}…` : journal.name,
-          when: shortDate(journal.oaiLastSync as string),
-          articles: number.format(journal.articleCount),
-        })),
-    [journalIndex],
-  );
+  // "So'nggi yangilanishlar" — alohida yengil so'rov (`/api/updates`). Ilgari
+  // 467 jurnalning to'liq ro'yxatidan (406 KB) hisoblanardi va u kelguncha
+  // blok "ma'lumot yo'q" deb turardi. `null` — yuklanmoqda.
+  // Ref bayrog'i ataylab yo'q: StrictMode effektni ikki marta yurgizadi va
+  // bayroq bo'lsa ikkinchi yurishdagi javob hech qachon o'rnatilmasdi.
+  const [recentUpdates, setRecentUpdates] = useState<RecentUpdate[] | "error" | null>(null);
+  useEffect(() => {
+    if (!needsCatalog || recentUpdates !== null) return;
+    let active = true;
+    loadRecentUpdates()
+      .then((items) => {
+        if (active) setRecentUpdates(items);
+      })
+      .catch(() => {
+        if (active) setRecentUpdates("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [needsCatalog, recentUpdates]);
 
   const topFields = useMemo(
     () =>
@@ -910,22 +917,41 @@ function App() {
                 <Activity className="ml-auto size-4 text-muted-foreground" />
               </div>
               <div className="divide-y">
-                {recentUpdates.length === 0 && (
+                {recentUpdates === null &&
+                  [0, 1, 2].map((key) => (
+                    <div key={key} className="flex items-center gap-3 px-4 py-3" aria-hidden="true">
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 flex-1" />
+                      <Skeleton className="h-3 w-16" />
+                    </div>
+                  ))}
+                {recentUpdates === "error" && (
                   <p className="p-6 text-center text-sm text-muted-foreground">
-                    Yangilanish ma’lumoti hali yo‘q.
+                    Yangilanish ma’lumotini olib bo‘lmadi.
                   </p>
                 )}
-                {recentUpdates.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                    <time className="w-16 shrink-0 font-mono text-xs text-muted-foreground">
-                      {item.when}
-                    </time>
-                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                    <small className="shrink-0 tabular-nums text-xs text-muted-foreground">
-                      {item.articles} maqola
-                    </small>
-                  </div>
-                ))}
+                {Array.isArray(recentUpdates) && recentUpdates.length === 0 && (
+                  <p className="p-6 text-center text-sm text-muted-foreground">
+                    Hozircha yangi maqola qo‘shgan yangilanish qayd etilmagan.
+                  </p>
+                )}
+                {Array.isArray(recentUpdates) &&
+                  recentUpdates.map((item) => (
+                    <div key={`${item.journalId}-${item.finishedAt}`} className="flex items-center gap-3 px-4 py-3 text-sm">
+                      <time
+                        dateTime={item.finishedAt}
+                        className="w-24 shrink-0 font-mono text-xs text-muted-foreground"
+                      >
+                        {shortDateTime(item.finishedAt)}
+                      </time>
+                      <AppLink to={journalPath(item.journalId)} className="min-w-0 flex-1 truncate hover:underline">
+                        {item.journalName}
+                      </AppLink>
+                      <small className="shrink-0 tabular-nums text-xs text-success">
+                        +{number.format(item.created)} maqola
+                      </small>
+                    </div>
+                  ))}
               </div>
             </Card>
           </div>

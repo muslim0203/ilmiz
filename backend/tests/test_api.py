@@ -26,6 +26,76 @@ class ApiTest(unittest.TestCase):
         engine.dispose()
         os.unlink(database_file.name)
 
+    def test_recent_updates_list_new_articles_one_per_journal(self) -> None:
+        """Alohida xotiradagi baza: umumiy test bazasidagi statistika o'zgarmasin."""
+        from datetime import datetime, timedelta
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from sqlalchemy.pool import StaticPool
+
+        from backend.app.db import Base, get_db
+        from backend.app.models import HarvestRun, HarvestSource, Journal
+
+        memory = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+        Base.metadata.create_all(memory)
+        session = Session(memory)
+        try:
+            journals = [
+                Journal(slug=slug, name=name, short_name=name, publisher="P", city="Тошкент", fields=[])
+                for slug, name in (("a", "A jurnal"), ("b", "B jurnal"), ("c", "C jurnal"))
+            ]
+            session.add_all(journals)
+            session.flush()
+            sources = [HarvestSource(journal_id=item.id, base_url=f"https://{item.slug}.uz/oai", status="healthy")
+                       for item in journals]
+            session.add_all(sources)
+            session.flush()
+            base = datetime(2026, 9, 11, 3, 0)
+            session.add_all([
+                HarvestRun(source_id=sources[0].id, status="succeeded", started_at=base,
+                           finished_at=base + timedelta(minutes=8), records_created=12),
+                HarvestRun(source_id=sources[0].id, status="succeeded", started_at=base - timedelta(days=1),
+                           finished_at=base - timedelta(days=1), records_created=5),
+                # Yangi maqolasiz va yiqilgan harvestlar chiqmaydi.
+                HarvestRun(source_id=sources[1].id, status="succeeded", started_at=base,
+                           finished_at=base + timedelta(minutes=5), records_created=0, records_updated=40),
+                HarvestRun(source_id=sources[1].id, status="failed", started_at=base,
+                           finished_at=base + timedelta(minutes=9), records_created=7),
+                HarvestRun(source_id=sources[2].id, status="succeeded", started_at=base,
+                           finished_at=base + timedelta(minutes=2), records_created=3),
+            ])
+            session.commit()
+            app.dependency_overrides[get_db] = lambda: session
+            response = self.client.get("/api/updates", params={"limit": 5})
+        finally:
+            app.dependency_overrides.pop(get_db, None)
+            session.close()
+            memory.dispose()
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual([(item["journalId"], item["created"]) for item in body], [("a", 12), ("c", 3)])
+        self.assertEqual(body[0]["journalName"], "A jurnal")
+        self.assertEqual(body[0]["finishedAt"], "2026-09-11T03:08:00+00:00")
+
+    def test_source_status_prefers_the_working_source(self) -> None:
+        """Keyin o'zgargan, lekin ishlamaydigan nomzod URL holatni buzmasin."""
+        from datetime import datetime
+
+        from backend.app.main import source_status
+        from backend.app.models import HarvestSource, Journal
+
+        journal = Journal(slug="x", name="X", short_name="X", publisher="P", city="Тошкент", fields=[])
+        working = HarvestSource(base_url="https://x.uz/index.php/j/oai", status="healthy",
+                                last_success_at=datetime(2026, 9, 11, 3, 8), updated_at=datetime(2026, 9, 11, 3, 8))
+        candidate = HarvestSource(base_url="https://x.uz/oai", status="failed",
+                                  last_success_at=None, updated_at=datetime(2026, 9, 11, 9, 0))
+        journal.harvest_sources = [candidate, working]
+        status = source_status(journal)
+        self.assertEqual(status["oaiStatus"], "healthy")
+        self.assertEqual(status["oaiBaseUrl"], "https://x.uz/index.php/j/oai")
+        self.assertEqual(status["oaiLastSync"], "2026-09-11T03:08:00+00:00")
+
     def test_health(self) -> None:
         response = self.client.get("/api/health")
         self.assertEqual(response.status_code, 200)
