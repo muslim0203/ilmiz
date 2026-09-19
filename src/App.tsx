@@ -443,9 +443,6 @@ function App() {
     </>
   );
 
-  const apiLabel =
-    apiState === "live" ? "API ulangan" : apiState === "loading" ? "Ulanmoqda..." : "Ulanish xatosi";
-
   return (
     <div id="top" className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur-md">
@@ -455,20 +452,6 @@ function App() {
             {navLinks}
           </nav>
           <div className="ml-auto flex items-center gap-1.5">
-            <Badge
-              variant="outline"
-              className="hidden gap-1.5 font-normal text-muted-foreground sm:inline-flex"
-            >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  apiState === "live" && "bg-success",
-                  apiState === "loading" && "animate-pulse bg-warning",
-                  apiState === "fallback" && "bg-muted-foreground",
-                )}
-              />
-              {apiLabel}
-            </Badge>
             <ModeToggle />
             <Button variant="outline" size="sm" onClick={() => setAccountOpen(true)}>
               {account ? account.displayName.split(" ")[0] : "Kirish"}
