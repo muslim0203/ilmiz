@@ -17,7 +17,7 @@ logs=("$log_dir"/access.log "$log_dir"/access.log.1 "$log_dir"/access.log.*.gz)
 [[ ${#logs[@]} -gt 0 ]] || { echo "Log topilmadi: $log_dir/access.log"; exit 1; }
 
 install -d -m 750 "$out"
-tmp="$out/.index.html.tmp"
+tmp="$out/.report-new.html"
 # `zcat -f` siqilmagan faylni ham o'tkazadi. Botlar chiqarib tashlanadi:
 # kunlik 42 ming so'rovning katta qismi qidiruv robotlari.
 zcat -f -- "${logs[@]}" | goaccess - \
