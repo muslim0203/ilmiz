@@ -78,6 +78,8 @@ LABELS = {
 }
 
 TRANSLATIONS = {"head": HEADS, "desc": DESCS, "label": LABELS}
+# `--crawlers-only` rejimida GoAccess sarlavhaga shu qo'shimchani qo'shadi.
+SUFFIXES = {" - Including spiders": " (robotlar bilan)"}
 # Qiymat ichida ekranlangan qo'shtirnoq ham bo'lishi mumkin.
 FIELD = re.compile(r'"(head|desc|label)":\s*"((?:[^"\\]|\\.)*)"')
 
@@ -91,10 +93,15 @@ def translate(report: str) -> str:
             decoded = json.loads('"' + value + '"')
         except json.JSONDecodeError:
             return match.group(0)
-        replacement = TRANSLATIONS[key].get(decoded)
+        base, tail = decoded, ""
+        for suffix, translated_suffix in SUFFIXES.items():
+            if decoded.endswith(suffix):
+                base, tail = decoded[: -len(suffix)], translated_suffix
+                break
+        replacement = TRANSLATIONS[key].get(base)
         if replacement is None:
             return match.group(0)
-        return '"' + key + '": ' + json.dumps(replacement, ensure_ascii=False)
+        return '"' + key + '": ' + json.dumps(replacement + tail, ensure_ascii=False)
 
     return FIELD.sub(swap, report)
 

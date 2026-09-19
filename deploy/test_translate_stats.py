@@ -25,6 +25,12 @@ class TranslateTests(unittest.TestCase):
         self.assertIn('"head": "Brand New Panel"', result)
         self.assertIn('"label": "Unknown Column"', result)
 
+    def test_crawlers_only_suffix_is_translated(self) -> None:
+        """`--crawlers-only` sarlavhaga "- Including spiders" qo'shadi."""
+        source = '{"head": "Unique visitors per day - Including spiders"}'
+        self.assertEqual(
+            json.loads(translate(source))["head"], "Kunlik tashrifchilar (robotlar bilan)")
+
     def test_result_is_still_valid_json(self) -> None:
         json.loads(translate(REPORT))
 
