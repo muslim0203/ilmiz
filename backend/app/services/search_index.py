@@ -12,7 +12,7 @@ bu almashtirish qidiruv qamrovini o'zgartirmaydi.
 """
 from __future__ import annotations
 
-from sqlalchemy import Select, column, inspect, table, text
+from sqlalchemy import Select, column, inspect, select, table, text
 from sqlalchemy.orm import Session
 
 from .search_text import query_words
@@ -67,6 +67,23 @@ def apply(statement: Select, expression: str) -> Select:
     )
 
 
+def match_subquery(expression: str) -> Select:
+    """Mos kelgan maqola id'lari — sanash uchun (reytingsiz, bog'lanishsiz).
+
+    `count(*)` da bog'lanish ishlatilsa, SQLite maqolalar jadvalini tashqi
+    tsiklga qo'yib, har bir qator uchun FTS'ga alohida murojaat qilishi
+    mumkin: 135 ming maqolada bu 213 soniya edi (`ix_articles_published`
+    qo'shilgandan keyin reja aynan shunday tanlandi). Bu ko'rinishda reja
+    doim FTS'dan boshlanadi — 0.02 soniya.
+    """
+    return (
+        select(column("rowid"))
+        .select_from(articles_fts)
+        .where(text("articles_fts MATCH :fts_count_query"))
+        .params(fts_count_query=expression)
+    )
+
+
 def rebuild(db: Session) -> int:
     """Indeksni asosiy jadvaldan qayta quradi.
 
@@ -87,4 +104,4 @@ def check_integrity(db: Session) -> bool:
         return False
 
 
-__all__ = ["apply", "available", "check_integrity", "match_expression", "rebuild"]
+__all__ = ["apply", "available", "check_integrity", "match_expression", "match_subquery", "rebuild"]

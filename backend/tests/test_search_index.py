@@ -1,6 +1,6 @@
 import unittest
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.models import Article, Base, Journal
@@ -132,6 +132,29 @@ class FtsQueryTest(unittest.TestCase):
         for query in ("pedagogika", "iqtisodiy tahlil", "morfologiya", "tahlil"):
             with self.subTest(query=query):
                 self.assertEqual(self.fts_titles(query), self.like_titles(query))
+
+    def count_statement(self, query: str):
+        """`/api/articles` dagi sanash so'rovi (X-Total-Count) bilan bir xil."""
+        expression = search_index.match_expression(query)
+        base = select(Article).where(Article.is_deleted.is_(False))
+        return base.where(Article.id.in_(search_index.match_subquery(expression)))
+
+    def test_count_matches_the_returned_rows(self) -> None:
+        for query in ("pedagogika", "iqtisodiy tahlil", "morfologiya"):
+            with self.subTest(query=query):
+                statement = self.count_statement(query)
+                total = self.db.scalar(select(func.count()).select_from(statement.subquery()))
+                self.assertEqual(total, len(self.fts_titles(query)))
+
+    def test_count_query_does_not_join_the_index(self) -> None:
+        """Bog'lanish bilan sanaganda SQLite 135 ming qatorni aylanib chiqardi (213 s).
+
+        Sanash faqat FTS qaytargan id'lar bo'yicha bo'lishi kerak — shunda
+        reja doim indeksdan boshlanadi.
+        """
+        sql = " ".join(str(self.count_statement("pedagogika").compile(self.db.get_bind())).split())
+        self.assertNotIn("JOIN articles_fts", sql)
+        self.assertIn("IN (SELECT", sql)
 
     def test_all_words_must_match(self) -> None:
         found = self.fts_titles("iqtisodiy tahlil")

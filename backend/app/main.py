@@ -682,17 +682,14 @@ def list_articles(
     db: Session = Depends(get_db),
 ) -> list[dict[str, object]]:
     statement = select(Article).options(selectinload(Article.journal)).where(Article.is_deleted.is_(False))
-    ranked = False
+    expression = None
     if q:
         # FTS5 indeksi bo'lsa — mos kelish bo'yicha tartiblangan tez qidiruv.
         # Bo'lmasa (PostgreSQL yoki migratsiyasiz baza) eski yo'l ishlaydi:
         # `search_text` allaqachon kichik harf va lotinlashtirilgan, shuning
         # uchun `ilike` (ya'ni har qator uchun `lower()`) kerak emas.
         expression = search_index.match_expression(q) if search_index.available(db) else None
-        if expression:
-            statement = search_index.apply(statement, expression)
-            ranked = True
-        else:
+        if expression is None:
             for word in query_words(q):
                 statement = statement.where(
                     Article.search_text.like(f"%{escape_like(word)}%", escape=LIKE_ESCAPE)
@@ -706,9 +703,17 @@ def list_articles(
     allowed = matching_journal_ids(db, field, city)
     if allowed is not None:
         statement = statement.where(Article.journal_id.in_(allowed))
-    response.headers["X-Total-Count"] = str(_total_of(db, statement))
-    if ranked:
-        articles = db.scalars(statement.offset(offset).limit(limit))
+    # Sanashda FTS bog'lanishi ishlatilmaydi: `count(*)` da SQLite maqolalar
+    # jadvalini tashqi tsiklga qo'yib, har bir qator uchun indeksga murojaat
+    # qilardi — 135 ming maqolada 213 soniya (`ix_articles_published`
+    # qo'shilgandan keyin reja aynan shunday tanlanardi).
+    counted = statement
+    if expression:
+        counted = statement.where(Article.id.in_(search_index.match_subquery(expression)))
+    response.headers["X-Total-Count"] = str(_total_of(db, counted))
+    if expression:
+        # BM25 tartibi bog'lanishni talab qiladi; bu so'rovda reja FTS'dan boshlanadi.
+        articles = db.scalars(search_index.apply(statement, expression).offset(offset).limit(limit))
     else:
         # Mos kelish darajasi yo'q — eng yangi nashr birinchi.
         articles = feed.page(db, statement, offset=offset, limit=limit)
