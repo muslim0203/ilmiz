@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  Bot,
   CheckCircle2,
   Clock3,
   Database,
@@ -279,9 +280,14 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
             <>
               {/* Hisobot server loglaridan tayyorlanadi; faqat admin hisobi ochadi
                   (token bilan kirilganda cookie bo'lmagani uchun ishlamaydi). */}
-              <Button variant="outline" size="sm" asChild title="Kunlik tashriflar va ochilgan sahifalar">
+              <Button variant="outline" size="sm" asChild title="Kunlik tashriflar va ochilgan sahifalar (botlarsiz)">
                 <a href="/api/admin/stats" target="_blank" rel="noreferrer">
                   <BarChart3 /> Statistika
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" asChild title="Qidiruv robotlari: qaysi bot, qancha so‘rov">
+                <a href="/api/admin/stats?bot=1" target="_blank" rel="noreferrer">
+                  <Bot /> Botlar
                 </a>
               </Button>
               <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>

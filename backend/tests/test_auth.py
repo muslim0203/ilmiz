@@ -805,14 +805,16 @@ class AuthTest(unittest.TestCase):
 
     def test_stats_report_is_admin_only(self) -> None:
         """Hisobot ommaviy katalogda turmaydi — faqat admin hisobi ko'radi."""
+        import shutil
         import tempfile
+        from pathlib import Path
 
-        handle = tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8", delete=False)
-        handle.write("<html><body>GoAccess hisoboti</body></html>")
-        handle.close()
-        os.environ["ILMIZ_STATS_REPORT"] = handle.name
-        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_REPORT", None))
-        self.addCleanup(lambda: os.unlink(handle.name))
+        folder = Path(tempfile.mkdtemp())
+        (folder / "index.html").write_text("<html><body>GoAccess hisoboti</body></html>", encoding="utf-8")
+        (folder / "botlar.html").write_text("<html><body>Botlar hisoboti</body></html>", encoding="utf-8")
+        os.environ["ILMIZ_STATS_DIR"] = str(folder)
+        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_DIR", None))
+        self.addCleanup(lambda: shutil.rmtree(folder, ignore_errors=True))
 
         self.client.cookies.clear()
         self.assertEqual(self.client.get("/api/admin/stats").status_code, 401)
@@ -834,9 +836,15 @@ class AuthTest(unittest.TestCase):
         self.assertIn("noindex", response.headers["x-robots-tag"])
         self.assertIn("no-store", response.headers["cache-control"])
 
+        # Botlar alohida hisobotda; odatiy hisobotda ular chiqarib tashlangan.
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        bots = self.client.get("/api/admin/stats", params={"bot": "1"})
+        self.assertEqual(bots.status_code, 200)
+        self.assertIn("Botlar hisoboti", bots.text)
+
     def test_missing_stats_report_explains_itself(self) -> None:
-        os.environ["ILMIZ_STATS_REPORT"] = "/hech-qayerda/yoq-hisobot.html"
-        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_REPORT", None))
+        os.environ["ILMIZ_STATS_DIR"] = "/hech-qayerda/yoq-katalog"
+        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_DIR", None))
         token = self.admin_session("0000-0002-1825-0151")
         self.client.cookies.set(auth_service.SESSION_COOKIE, token)
         response = self.client.get("/api/admin/stats")

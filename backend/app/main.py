@@ -804,22 +804,27 @@ def get_article(article_id: int, db: Session = Depends(get_db)) -> dict[str, obj
     return payload
 
 
-def stats_report_path() -> Path:
-    """GoAccess hisoboti; har so'rovda o'qiladi (testlar boshqa faylni bera oladi)."""
-    return Path(os.getenv("ILMIZ_STATS_REPORT", "/var/lib/ilmiz/stats/index.html"))
+# Faqat shu ikki fayl beriladi — nom so'rovdan olinmaydi.
+STATS_REPORTS = {False: "index.html", True: "botlar.html"}
+
+
+def stats_report_path(name: str) -> Path:
+    """GoAccess hisobotlari katalogi; har so'rovda o'qiladi (testlar uchun)."""
+    return Path(os.getenv("ILMIZ_STATS_DIR", "/var/lib/ilmiz/stats")) / name
 
 
 @admin.get("/stats", response_class=HTMLResponse)
-def admin_stats() -> HTMLResponse:
+def admin_stats(bot: bool = False) -> HTMLResponse:
     """Sayt statistikasi — faqat admin uchun.
 
-    Hisobotni `deploy/generate_stats.sh` nginx loglaridan kuniga bir marta
-    tayyorlaydi; saytda kuzatuv skripti yo'q. Fayl ommaviy katalogda
-    turmaydi — uni faqat shu endpoint beradi (`admin_guard` + router
-    dependency'si).
+    Hisobotlarni `deploy/generate_stats.sh` nginx loglaridan kuniga bir marta
+    tayyorlaydi; saytda kuzatuv skripti yo'q. Fayllar ommaviy katalogda
+    turmaydi — ularni faqat shu endpoint beradi (`admin_guard` + router
+    dependency'si). `?bot=1` — qidiruv robotlari bo'yicha alohida hisobot
+    (odatiy hisobotda ular chiqarib tashlangan).
     """
     try:
-        report = stats_report_path().read_text(encoding="utf-8")
+        report = stats_report_path(STATS_REPORTS[bot]).read_text(encoding="utf-8")
     except OSError:
         raise HTTPException(
             status_code=503,

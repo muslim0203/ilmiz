@@ -338,14 +338,16 @@ xizmat bazaga yozolmay qoladi.
 ## Sayt statistikasi (GoAccess)
 
 Saytda kuzatuv skripti yo'q: statistika nginx kirish loglaridan quriladi.
-`deploy/generate_stats.sh` GoAccess bilan HTML hisobot yasaydi
-(`/var/lib/ilmiz/stats/index.html`), botlar hisobdan chiqariladi, vaqt
-`Asia/Tashkent` bo'yicha. `ilmiz-stats.timer` uni har kuni 04:15 (UTC) da
-yangilaydi — harvest tugagandan keyin.
+`deploy/generate_stats.sh` GoAccess bilan ikkita HTML hisobot yasaydi:
+`/var/lib/ilmiz/stats/index.html` — tirik tashrifchilar (botlar hisobdan
+chiqarilgan) va `botlar.html` — faqat qidiruv robotlari. Vaqt
+`Asia/Tashkent` bo'yicha. `ilmiz-stats.timer` ikkalasini ham har kuni 04:15
+(UTC) da yangilaydi — harvest tugagandan keyin. Ikki o'tish ~60 s CPU oladi.
 
-Hisobot ommaviy katalogda turmaydi; uni faqat `/api/admin/stats` beradi va
-u `admin_guard` ostida — ya'ni saytga kirgan, `is_admin` huquqli hisob.
-Admin panelidagi «Statistika» tugmasi ham shu manzilni ochadi.
+Hisobotlar ommaviy katalogda turmaydi; ularni faqat `/api/admin/stats`
+(botlar uchun `?bot=1`) beradi va u `admin_guard` ostida — ya'ni saytga
+kirgan, `is_admin` huquqli hisob. Admin panelidagi «Statistika» va
+«Botlar» tugmalari ham shu manzillarni ochadi.
 
 O'rnatish (kod yangilangandan keyin, bir marta):
 

@@ -84,7 +84,7 @@ Sozlanmagan provayder kirish oynasida ko‘rsatilmaydi. Endpointlar:
   `ROR_CLIENT_ID` bo'lsa limit yuqoriroq)
 - `POST /api/auth/logout` — sessiyani bekor qiladi
 
-- `GET /api/admin/stats` — sayt statistikasi: GoAccess hisoboti nginx loglaridan
+- `GET /api/admin/stats` (`?bot=1` — qidiruv robotlari) — sayt statistikasi: GoAccess hisoboti nginx loglaridan
   (`deploy/install_stats.sh` bir marta o‘rnatadi, kunlik timer yangilaydi). Saytda
   kuzatuv skripti yo‘q; hisobotni faqat admin hisobi ko‘radi.
 

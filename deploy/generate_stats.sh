@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Sayt statistikasi: nginx loglaridan GoAccess HTML hisoboti.
+# Sayt statistikasi: nginx loglaridan GoAccess HTML hisobotlari.
 #
 #   ILMIZ_STATS_DIR=/var/lib/ilmiz/stats bash deploy/generate_stats.sh
 #
-# Saytga hech qanday kuzatuv skripti qo'shilmaydi — hisobot server
-# loglaridan quriladi. Hisobot ommaviy emas: uni faqat `/api/admin/stats`
-# beradi (admin himoyasi ostida).
+# Ikkita hisobot: `index.html` — tirik tashrifchilar (botlarsiz),
+# `botlar.html` — faqat qidiruv robotlari. Saytga kuzatuv skripti
+# qo'shilmaydi; ikkalasini ham faqat `/api/admin/stats` beradi.
 set -euo pipefail
 out="${ILMIZ_STATS_DIR:-/var/lib/ilmiz/stats}"
 log_dir="${ILMIZ_NGINX_LOG_DIR:-/var/log/nginx}"
@@ -17,16 +17,24 @@ logs=("$log_dir"/access.log "$log_dir"/access.log.1 "$log_dir"/access.log.*.gz)
 [[ ${#logs[@]} -gt 0 ]] || { echo "Log topilmadi: $log_dir/access.log"; exit 1; }
 
 install -d -m 750 "$out"
-tmp="$out/.report-new.html"
-# `zcat -f` siqilmagan faylni ham o'tkazadi. Botlar chiqarib tashlanadi:
-# kunlik 42 ming so'rovning katta qismi qidiruv robotlari.
-zcat -f -- "${logs[@]}" | goaccess - \
-    --log-format=COMBINED \
-    --tz="${ILMIZ_STATS_TZ:-Asia/Tashkent}" \
-    --ignore-crawlers \
-    --no-progress \
-    --html-report-title='IlmIz — sayt statistikasi' \
-    -o "$tmp"
-mv -f "$tmp" "$out/index.html"
-chmod 640 "$out/index.html"
-echo "Hisobot tayyor: $out/index.html ($(stat -c %s "$out/index.html") bayt)"
+
+report() {
+    local title="$1" name="$2"
+    shift 2
+    # Vaqtinchalik fayl ham `.html` bilan tugashi shart: GoAccess boshqa
+    # kengaytmani rad etadi va hisobot umuman yozilmaydi.
+    local tmp="$out/.$name.new.html"
+    zcat -f -- "${logs[@]}" | goaccess - \
+        --log-format=COMBINED \
+        --tz="${ILMIZ_STATS_TZ:-Asia/Tashkent}" \
+        --no-progress \
+        --html-report-title="$title" \
+        "$@" \
+        -o "$tmp"
+    mv -f "$tmp" "$out/$name"
+    chmod 640 "$out/$name"
+    echo "Hisobot tayyor: $out/$name ($(stat -c %s "$out/$name") bayt)"
+}
+
+report 'IlmIz — sayt statistikasi (botlarsiz)' index.html --ignore-crawlers
+report 'IlmIz — botlar statistikasi' botlar.html --crawlers-only
