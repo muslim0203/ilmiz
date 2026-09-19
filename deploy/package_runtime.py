@@ -19,6 +19,7 @@ PUBLIC_DEPLOY_FILES = {
     # Sayt statistikasi: GoAccess hisoboti va uning kunlik jadvali.
     'generate_stats.sh', 'install_stats.sh',
     'ilmiz-stats.service', 'ilmiz-stats.timer',
+    'translate_stats.py', 'test_translate_stats.py',
 }
 
 

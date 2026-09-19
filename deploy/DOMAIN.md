@@ -344,6 +344,12 @@ chiqarilgan) va `botlar.html` — faqat qidiruv robotlari. Vaqt
 `Asia/Tashkent` bo'yicha. `ilmiz-stats.timer` ikkalasini ham har kuni 04:15
 (UTC) da yangilaydi — harvest tugagandan keyin. Ikki o'tish ~60 s CPU oladi.
 
+Yorliqlar o'zbekcha: GoAccess i18n'i gettext locale'ga tayanadi (serverda
+`uz` locale ham, gettext vositalari ham yo'q), shuning uchun hisobot
+yasalgandan keyin `deploy/translate_stats.py` undagi `head`/`desc`/`label`
+qiymatlarini lug'at bo'yicha almashtiradi. Lug'atda yo'q matn inglizcha
+qoladi — GoAccess yangilanganda hisobot buzilmaydi.
+
 Hisobotlar ommaviy katalogda turmaydi; ularni faqat `/api/admin/stats`
 (botlar uchun `?bot=1`) beradi va u `admin_guard` ostida — ya'ni saytga
 kirgan, `is_admin` huquqli hisob. Admin panelidagi «Statistika» va
