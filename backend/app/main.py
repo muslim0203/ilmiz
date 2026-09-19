@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, HttpUrl
-from sqlalchemy import String, case, cast, distinct, func, or_, select
+from sqlalchemy import String, case, cast, distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from .db import DATABASE_URL, SessionLocal, get_db, init_db
@@ -35,6 +35,7 @@ from .services import auth as auth_service
 from .services import authorship
 from .services import feed
 from .services import journal_edit
+from .services import journal_search
 from .services import ror as ror_service
 from .services import search_index
 from .services.search_text import LIKE_ESCAPE, escape_like, query_words
@@ -479,47 +480,6 @@ def stats(db: Session = Depends(get_db)) -> dict[str, int]:
     return {"journals": journals_count, "articles": articles_count, "healthySources": sources_count}
 
 
-# Kirilldan lotinga — qidiruv uchun. Muallif ismlari bir jurnalda kirillda,
-# boshqasida lotinda yoziladi; foydalanuvchi esa bittasini yozadi.
-_CYRILLIC_TO_LATIN = str.maketrans({
-    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "j",
-    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
-    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "x", "ц": "ts",
-    "ч": "ch", "ш": "sh", "щ": "sh", "ъ": "", "ы": "i", "ь": "", "э": "e", "ю": "yu",
-    "я": "ya", "ғ": "g", "қ": "q", "ҳ": "h", "ў": "o",
-})
-
-
-def _search_forms(word: str) -> list[str]:
-    """So'zning qidiriladigan shakllari: o'zi va lotin transliteratsiyasi."""
-    forms = [word]
-    latin = word.casefold().translate(_CYRILLIC_TO_LATIN)
-    if latin and latin != word.casefold():
-        forms.append(latin)
-    return forms
-
-
-def text_search_filter(query: str, columns: list):
-    """Har bir so'z alohida qidiriladi va hammasi topilishi shart.
-
-    Ilgari butun so'rov bitta bo'lak sifatida qidirilardi. Mualliflar esa
-    familiya-birinchi saqlanadi ("Sharofiddinov, Kamoliddin"), shuning uchun
-    "Kamoliddin Sharofiddinov" hech qachon topilmasdi.
-    """
-    conditions = []
-    for word in query.split():
-        needle = word.strip()
-        if len(needle) < 2:
-            continue
-        variants = [
-            column.ilike(f"%{escape_like(form)}%", escape=LIKE_ESCAPE)
-            for form in _search_forms(needle)
-            for column in columns
-        ]
-        conditions.append(or_(*variants))
-    return conditions
-
-
 def matching_journal_ids(db: Session, fields: list[str], cities: list[str]) -> set[int] | None:
     """Soha/shahar filtriga mos jurnal IDlari, filtr bo‘lmasa None.
 
@@ -628,8 +588,11 @@ def list_journals(
 ) -> list[dict[str, object]]:
     statement = select(Journal).options(selectinload(Journal.harvest_sources))
     if q:
-        for condition in text_search_filter(q, [Journal.name, Journal.publisher, Journal.issn]):
-            statement = statement.where(condition)
+        # Kirill va lotin yozuvlari uchrashishi uchun taqqoslash Python tarafda
+        # (`services/journal_search.py`): "Vodiynoma" so'rovi "Водийнома" ni topadi.
+        matches = journal_search.matching_ids(db, q)
+        if matches is not None:
+            statement = statement.where(Journal.id.in_(matches))
 
     if oai_only:
         statement = statement.join(Journal.harvest_sources).distinct()
@@ -1073,9 +1036,9 @@ def admin_journals(
     # jurnal uchun `manually_edited` so‘rovi.
     statement = select(Journal).order_by(Journal.name).limit(limit)
     if q and q.strip():
-        conditions = text_search_filter(q.strip(), [Journal.name, Journal.publisher, Journal.issn])
-        for condition in conditions:
-            statement = statement.where(condition)
+        matches = journal_search.matching_ids(db, q)
+        if matches is not None:
+            statement = statement.where(Journal.id.in_(matches))
     journals = list(db.scalars(statement))
     manual = {
         journal.id: sorted(journal_edit.manually_edited(db, journal.id)) for journal in journals
