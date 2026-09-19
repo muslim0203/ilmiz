@@ -49,8 +49,10 @@ export default function PrivacyPage() {
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Qidiruv, jurnal va maqola sahifalari hisobsiz ochiladi. Bunda hech qanday shaxsiy
           ma’lumot saqlanmaydi. Veb-server odatiy texnik jurnal yuritadi (so‘rov manzili, vaqti,
-          brauzer turi va IP manzil) — u faqat nosozliklarni aniqlash va suiiste’molning oldini
-          olish uchun kerak.
+          brauzer turi va IP manzil) — u nosozliklarni aniqlash, suiiste’molning oldini olish va
+          saytning umumlashtirilgan tashrif statistikasini (kunlik tashriflar, ochilgan sahifalar)
+          tuzish uchun kerak. Statistika faqat administratorga ko‘rinadi va alohida shaxsga
+          bog‘lanmaydi.
         </p>
 
         <h2 className="mt-8 text-lg font-semibold tracking-tight">ORCID yoki Google orqali kirganda</h2>

@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  BarChart3,
   CheckCircle2,
   Clock3,
   Database,
@@ -275,9 +276,18 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
         <div className="ml-auto flex items-center gap-1.5">
           <ModeToggle />
           {!authError && (
-            <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
-              <RefreshCw className={cn(loading && "animate-spin")} /> Yangilash
-            </Button>
+            <>
+              {/* Hisobot server loglaridan tayyorlanadi; faqat admin hisobi ochadi
+                  (token bilan kirilganda cookie bo'lmagani uchun ishlamaydi). */}
+              <Button variant="outline" size="sm" asChild title="Kunlik tashriflar va ochilgan sahifalar">
+                <a href="/api/admin/stats" target="_blank" rel="noreferrer">
+                  <BarChart3 /> Statistika
+                </a>
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCw className={cn(loading && "animate-spin")} /> Yangilash
+              </Button>
+            </>
           )}
         </div>
       </div>

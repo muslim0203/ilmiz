@@ -5,11 +5,12 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import String, case, cast, distinct, func, or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -801,6 +802,31 @@ def get_article(article_id: int, db: Session = Depends(get_db)) -> dict[str, obj
     payload = article_payload(article)
     payload["journalSlug"] = article.journal.slug if article.journal else None
     return payload
+
+
+def stats_report_path() -> Path:
+    """GoAccess hisoboti; har so'rovda o'qiladi (testlar boshqa faylni bera oladi)."""
+    return Path(os.getenv("ILMIZ_STATS_REPORT", "/var/lib/ilmiz/stats/index.html"))
+
+
+@admin.get("/stats", response_class=HTMLResponse)
+def admin_stats() -> HTMLResponse:
+    """Sayt statistikasi — faqat admin uchun.
+
+    Hisobotni `deploy/generate_stats.sh` nginx loglaridan kuniga bir marta
+    tayyorlaydi; saytda kuzatuv skripti yo'q. Fayl ommaviy katalogda
+    turmaydi — uni faqat shu endpoint beradi (`admin_guard` + router
+    dependency'si).
+    """
+    try:
+        report = stats_report_path().read_text(encoding="utf-8")
+    except OSError:
+        raise HTTPException(
+            status_code=503,
+            detail="Statistika hisoboti hali tayyorlanmagan (kunlik jadval 04:15 da ishlaydi).",
+        )
+    # `X-Robots-Tag: noindex` ni `indexing_guard` barcha `/api/` javoblariga qo'yadi.
+    return HTMLResponse(report, headers={"Cache-Control": "no-store, private"})
 
 
 @admin.get("/sources")

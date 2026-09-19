@@ -1,0 +1,12 @@
+[Unit]
+Description=IlmIz sayt statistikasini har kuni yangilash
+
+[Timer]
+# Harvest 03:00 da tugagach (server vaqti, UTC) — O'zbekistonda 09:15.
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=ilmiz-stats.service
+
+[Install]
+WantedBy=timers.target

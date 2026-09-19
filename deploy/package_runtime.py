@@ -16,6 +16,9 @@ PUBLIC_DEPLOY_FILES = {
     'install_harvest_timer.sh',
     # Serverdagi kodni arxiv bilan yangilash (zaxira, test, rollback).
     'update_app.sh',
+    # Sayt statistikasi: GoAccess hisoboti va uning kunlik jadvali.
+    'generate_stats.sh', 'install_stats.sh',
+    'ilmiz-stats.service', 'ilmiz-stats.timer',
 }
 
 

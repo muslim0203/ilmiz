@@ -335,6 +335,27 @@ bo'lmaydi va u joriy katalogda yangi bo'sh baza yaratadi. Hech qachon
 root sifatida yurgizmang: `-wal`/`-shm` fayllar root egaligida qolib,
 xizmat bazaga yozolmay qoladi.
 
+## Sayt statistikasi (GoAccess)
+
+Saytda kuzatuv skripti yo'q: statistika nginx kirish loglaridan quriladi.
+`deploy/generate_stats.sh` GoAccess bilan HTML hisobot yasaydi
+(`/var/lib/ilmiz/stats/index.html`), botlar hisobdan chiqariladi, vaqt
+`Asia/Tashkent` bo'yicha. `ilmiz-stats.timer` uni har kuni 04:15 (UTC) da
+yangilaydi — harvest tugagandan keyin.
+
+Hisobot ommaviy katalogda turmaydi; uni faqat `/api/admin/stats` beradi va
+u `admin_guard` ostida — ya'ni saytga kirgan, `is_admin` huquqli hisob.
+Admin panelidagi «Statistika» tugmasi ham shu manzilni ochadi.
+
+O'rnatish (kod yangilangandan keyin, bir marta):
+
+```bash
+sudo bash /opt/ilmiz/app/deploy/install_stats.sh
+```
+
+Loglar logrotate bilan 14 kun saqlanadi, demak hisobot ham shu oynani
+ko'rsatadi. Qo'lda yangilash: `sudo systemctl start ilmiz-stats.service`.
+
 ## Diqqat qilinadigan joylar
 
 **Baza almashtirilmasin.** `install_staging.sh` faqat birinchi o'rnatish

@@ -801,6 +801,48 @@ class AuthTest(unittest.TestCase):
             db.commit()
             return auth_service.create_session(db, row)
 
+    # --- sayt statistikasi ------------------------------------------------
+
+    def test_stats_report_is_admin_only(self) -> None:
+        """Hisobot ommaviy katalogda turmaydi — faqat admin hisobi ko'radi."""
+        import tempfile
+
+        handle = tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8", delete=False)
+        handle.write("<html><body>GoAccess hisoboti</body></html>")
+        handle.close()
+        os.environ["ILMIZ_STATS_REPORT"] = handle.name
+        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_REPORT", None))
+        self.addCleanup(lambda: os.unlink(handle.name))
+
+        self.client.cookies.clear()
+        self.assertEqual(self.client.get("/api/admin/stats").status_code, 401)
+
+        user = self.make_user(subject="0000-0002-1825-0150")
+        with SessionLocal() as db:
+            row = db.get(User, user.id)
+            token = auth_service.create_session(db, row)
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        self.assertEqual(self.client.get("/api/admin/stats").status_code, 401)
+
+        with SessionLocal() as db:
+            db.get(User, user.id).is_admin = True
+            db.commit()
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        response = self.client.get("/api/admin/stats")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("GoAccess hisoboti", response.text)
+        self.assertIn("noindex", response.headers["x-robots-tag"])
+        self.assertIn("no-store", response.headers["cache-control"])
+
+    def test_missing_stats_report_explains_itself(self) -> None:
+        os.environ["ILMIZ_STATS_REPORT"] = "/hech-qayerda/yoq-hisobot.html"
+        self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_REPORT", None))
+        token = self.admin_session("0000-0002-1825-0151")
+        self.client.cookies.set(auth_service.SESSION_COOKIE, token)
+        response = self.client.get("/api/admin/stats")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("tayyorlanmagan", response.json()["detail"])
+
     def test_plain_user_cannot_reach_admin_api(self) -> None:
         os.environ["ILMIZ_ADMIN_TOKEN"] = ADMIN_TOKEN
         try:
