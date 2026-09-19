@@ -824,12 +824,16 @@ def admin_stats(bot: bool = False) -> HTMLResponse:
     (odatiy hisobotda ular chiqarib tashlangan).
     """
     try:
-        report = stats_report_path(STATS_REPORTS[bot]).read_text(encoding="utf-8")
+        raw = stats_report_path(STATS_REPORTS[bot]).read_bytes()
     except OSError:
         raise HTTPException(
             status_code=503,
             detail="Statistika hisoboti hali tayyorlanmagan (kunlik jadval 04:15 da ishlaydi).",
         )
+    # Loglarda UTF-8 bo'lmagan baytlar uchraydi (skaner so'rovlari, masalan
+    # `/hello.world?\xad d+allow_url_include=1`), GoAccess ularni hisobotga
+    # o'zgarishsiz ko'chiradi. `replace` bo'lmasa sahifa 500 bilan yiqilardi.
+    report = raw.decode("utf-8", errors="replace")
     # `X-Robots-Tag: noindex` ni `indexing_guard` barcha `/api/` javoblariga qo'yadi.
     return HTMLResponse(report, headers={"Cache-Control": "no-store, private"})
 

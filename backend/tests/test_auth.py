@@ -810,7 +810,10 @@ class AuthTest(unittest.TestCase):
         from pathlib import Path
 
         folder = Path(tempfile.mkdtemp())
-        (folder / "index.html").write_text("<html><body>GoAccess hisoboti</body></html>", encoding="utf-8")
+        # Hisobotda UTF-8 bo'lmagan bayt bo'lishi mumkin: GoAccess skanerlarning
+        # buzuq so'rovlarini logdan o'zgarishsiz ko'chiradi.
+        (folder / "index.html").write_bytes(
+            "<html><body>GoAccess hisoboti /hello.world?".encode("utf-8") + b"\xad" + b"d</body></html>")
         (folder / "botlar.html").write_text("<html><body>Botlar hisoboti</body></html>", encoding="utf-8")
         os.environ["ILMIZ_STATS_DIR"] = str(folder)
         self.addCleanup(lambda: os.environ.pop("ILMIZ_STATS_DIR", None))
