@@ -298,6 +298,11 @@ Birinchi marta `harvest-20260906` nomi bilan bajarildi: 318 test serverda
 o'tdi, zaxira `/var/backups/ilmiz/before-harvest-20260906.db`, eski kod
 `/opt/ilmiz/app-before-harvest-20260906`.
 
+**Zaxiralar soni cheklangan.** Har zaxira ~1.5 GB; 19 tasi yig'ilib 38 GB
+diskni to'ldirgan va 19.09.2026 da yangilash "No space left on device"
+bilan to'xtagan edi. Endi skript oxirgi 5 zaxira (`ILMIZ_KEEP_BACKUPS`) va
+oxirgi 3 kod nusxasidan boshqasini o'zi o'chiradi.
+
 ## nginx xavfsizlik sarlavhalari va rate-limit (06.09.2026)
 
 `nginx-ilmiz.conf` endi ikkita qo'shimcha faylga tayanadi:

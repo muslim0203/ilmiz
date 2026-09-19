@@ -41,6 +41,20 @@ install -d -m 700 /var/backups/ilmiz
 backup="/var/backups/ilmiz/before-$release_id.db"
 /opt/ilmiz/venv/bin/python -c "from pathlib import Path; from deploy.prepare_staging import snapshot; snapshot(Path('/var/lib/ilmiz/ilmiz.db'), Path('$backup')); print('Baza zaxirasi tekshirildi: $backup')"
 
+# Har zaxira ~1.5 GB: 19 tasi yig'ilib 38 GB diskni to'ldirib qo'ygan va
+# keyingi yangilash "No space left on device" bilan to'xtagan edi. Shuning
+# uchun eski zaxiralar va kod nusxalari shu yerda tozalanadi.
+keep_backups=${ILMIZ_KEEP_BACKUPS:-5}
+ls -1t /var/backups/ilmiz/*.db 2>/dev/null | tail -n +$((keep_backups + 1)) | while read -r old; do
+    rm -f -- "$old"
+    echo "Eski zaxira o'chirildi: $old"
+done
+ls -1dt /opt/ilmiz/app-before-* 2>/dev/null | tail -n +4 | while read -r old; do
+    rm -rf -- "$old"
+    echo "Eski kod nusxasi o'chirildi: $old"
+done
+df -h / | tail -1
+
 systemctl stop ilmiz-staging
 mv -- "$app" "$previous"
 rollback() {
