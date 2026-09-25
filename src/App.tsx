@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
+  ChevronDown,
   BookOpen,
   CalendarDays,
   Check,
@@ -36,6 +37,7 @@ import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
 
 import AboutPage from "@/AboutPage";
+import HomePage from "@/HomePage";
 import PrivacyPage from "@/PrivacyPage";
 import TermsPage from "@/TermsPage";
 import AccountPanel from "@/AccountPanel";
@@ -128,6 +130,14 @@ function App() {
   const [city, setCity] = useState("Barcha shaharlar");
   const [oaiOnly, setOaiOnly] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
+  const [mobileFilters, setMobileFilters] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const update = () => headerRef.current?.classList.toggle("is-scrolled", window.scrollY > 30);
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
 
   // Katalog ma'lumotlari (jurnallar, maqolalar, statistika, facet'lar, jurnal
   // indeksi — 6 ta so'rov) faqat katalog ko'rinishida kerak. Ilgari ular har
@@ -138,14 +148,20 @@ function App() {
     (route.kind === "home" || route.kind === "journals" || route.kind === "articles" ||
       route.kind === "search" || route.kind === "field" || route.kind === "city" ||
       route.kind === "fields" || route.kind === "cities" || route.kind === "notFound");
+  // Bir marta yuklangan katalog maqola sahifasidan qaytganda qayta so'ralmaydi.
+  // Yuklash tugamay effekt tozalansa (StrictMode'ning ikkinchi chaqiruvi),
+  // bayroq qaytariladi — aks holda javob tashlab yuborilib, sahifa
+  // "yuklanmoqda" holatida qotib qolardi.
   const catalogLoaded = useRef(false);
   useEffect(() => {
     if (!needsCatalog || catalogLoaded.current) return;
     catalogLoaded.current = true;
     let active = true;
+    let done = false;
     loadCatalog()
       .then((data) => {
         if (!active) return;
+        done = true;
         setCatalogJournals(data.journals.items);
         setJournalTotal(data.journals.total);
         setCatalogArticles(data.articles.items);
@@ -165,6 +181,7 @@ function App() {
       });
     return () => {
       active = false;
+      if (!done) catalogLoaded.current = false;
     };
   }, [needsCatalog]);
 
@@ -219,7 +236,7 @@ function App() {
 
   // `/qidiruv?q=` — sayt qidiruvi. JSON-LD dagi `SearchAction` aynan shu
   // manzilga ishora qiladi, ya'ni Google uni chaqira olishi kerak.
-  const routeQuery = route.kind === "search" ? route.query : null;
+  const routeQuery = route.kind === "search" ? route.query : route.kind === "journals" || route.kind === "articles" ? new URLSearchParams(window.location.search).get("q") ?? "" : null;
   useEffect(() => {
     if (routeQuery !== null) setQuery(routeQuery);
   }, [routeQuery]);
@@ -417,11 +434,18 @@ function App() {
 
   // Navigatsiya haqiqiy `<a href>` lardan iborat: robot ular orqali indeksni
   // aylanib chiqadi, ilgari esa `onClick` ortidagi holat o'zgarishi edi.
+  // Sahifalash havolasi `q` kabi mavjud parametrlarni saqlab qoladi.
+  const pageHref = (page: number) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("sahifa", String(page));
+    return `${window.location.pathname}?${params.toString()}`;
+  };
+
   const navLinks = (
     <>
       {(
         [
-          ["/jurnallar", "Jurnallar", route.kind === "journals" || route.kind === "home"],
+          ["/jurnallar", "Jurnallar", route.kind === "journals"],
           ["/maqolalar", "Maqolalar", route.kind === "articles"],
           ["/yangi-maqolalar", "Yangi maqolalar", route.kind === "recent"],
           ["/sohalar", "Sohalar", route.kind === "fields" || route.kind === "field"],
@@ -433,11 +457,11 @@ function App() {
           key={href}
           variant="ghost"
           size="sm"
-          className={cn(active && "bg-accent text-accent-foreground")}
+          className={cn("nav-item", active && "bg-accent text-accent-foreground")}
           asChild
           onClick={() => setMobileNav(false)}
         >
-          <AppLink to={href}>{label}</AppLink>
+          <AppLink to={href} aria-current={active ? "page" : undefined}>{label}</AppLink>
         </Button>
       ))}
     </>
@@ -445,16 +469,18 @@ function App() {
 
   return (
     <div id="top" className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur-md">
-        <div className={cn(SHELL, "flex h-14 items-center gap-4")}>
+      <a className="skip-link" href="#main-content">Asosiy mazmunga o‘tish</a>
+      <header ref={headerRef} className="site-header sticky top-0 z-40 w-full border-b bg-background/90 backdrop-blur-md">
+        <div className={cn(SHELL, "flex h-20 items-center gap-6")}>
           <Brand />
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Asosiy navigatsiya">
+          <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Asosiy navigatsiya">
             {navLinks}
           </nav>
           <div className="ml-auto flex items-center gap-1.5">
             <ModeToggle />
-            <Button variant="outline" size="sm" onClick={() => setAccountOpen(true)}>
+            <Button className="account-button" size="sm" onClick={() => setAccountOpen(true)}>
               {account ? account.displayName.split(" ")[0] : "Kirish"}
+              <ArrowRight className="size-3.5" />
             </Button>
             {account?.isAdmin && (
               <Button
@@ -469,7 +495,7 @@ function App() {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={() => setMobileNav(true)}
               aria-label="Menyuni ochish"
             >
@@ -505,7 +531,7 @@ function App() {
         </SheetContent>
       </Sheet>
 
-      <main className="flex-1">
+      <main id="main-content" className="flex-1" tabIndex={-1}>
         {isArchive ? (
           <ArchivePage path={window.location.pathname + window.location.search} />
         ) : route.kind === "article" ? (
@@ -518,6 +544,8 @@ function App() {
           <TermsPage />
         ) : route.kind === "fields" || route.kind === "cities" ? (
           <DirectoryPage kind={route.kind} facets={facets} />
+        ) : route.kind === "home" ? (
+          <HomePage journals={catalogJournals} articles={catalogArticles} stats={platformStats} facets={facets} state={apiState} />
         ) : route.kind === "notFound" ? (
           <div className={cn(SHELL, "py-24 text-center")}>
             <h1 className="text-2xl font-semibold tracking-tight">Sahifa topilmadi</h1>
@@ -535,7 +563,7 @@ function App() {
           </div>
         ) : (
           <>
-        <section className="relative overflow-hidden border-b">
+        <section className="catalog-hero relative overflow-hidden border-b">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 -z-10 opacity-70"
@@ -565,7 +593,7 @@ function App() {
                 {hero.lead}
               </p>
 
-              <div className="mx-auto mt-8 flex max-w-2xl flex-col gap-2 sm:flex-row">
+              <form onSubmit={(event) => { event.preventDefault(); document.getElementById("catalog")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }); }} className="mx-auto mt-8 flex max-w-2xl flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -581,6 +609,7 @@ function App() {
                   />
                   {query && (
                     <button
+                      type="button"
                       onClick={() => setQuery("")}
                       aria-label="Qidiruvni tozalash"
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -590,17 +619,13 @@ function App() {
                   )}
                 </div>
                 <Button
+                  type="submit"
                   size="xl"
                   className="shrink-0"
-                  onClick={() =>
-                    document
-                      .getElementById("catalog")
-                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
-                  }
                 >
                   Izlash <ArrowRight />
                 </Button>
-              </div>
+              </form>
 
               {topFields.length > 0 && (
                 <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
@@ -622,7 +647,7 @@ function App() {
           </div>
         </section>
 
-        <section aria-label="Platforma ko‘rsatkichlari" className="border-b bg-muted/30">
+        <section aria-label="Platforma ko‘rsatkichlari" className="catalog-stats border-b bg-muted/30">
           <div className={cn(SHELL, "grid gap-3 py-6 sm:grid-cols-2 lg:grid-cols-4")}>
             {[
               { icon: BookOpen, value: number.format(platformStats.journals), label: "OAK jurnallari" },
@@ -683,7 +708,11 @@ function App() {
 
           <div className="mt-8 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
             <aside className="lg:sticky lg:top-20 lg:self-start">
-              <Card className="gap-4 py-4">
+              <Button variant="outline" className="mb-3 w-full justify-between lg:hidden" aria-expanded={mobileFilters} aria-controls="catalog-filters" onClick={() => setMobileFilters(value => !value)}>
+                <span className="flex items-center gap-2"><SlidersHorizontal className="size-4" />Filtrlar{filtersActive ? " · tanlangan" : ""}</span>
+                {mobileFilters ? <X className="size-4" /> : <ChevronDown className="size-4" />}
+              </Button>
+              <Card id="catalog-filters" className={cn("gap-4 py-4 lg:flex", !mobileFilters && "hidden")}>
                 <CardContent className="space-y-4 px-4">
                   <div className="flex items-center gap-2">
                     <SlidersHorizontal className="size-4 text-muted-foreground" />
@@ -833,10 +862,10 @@ function App() {
               {!filtersActive && totalResults > PAGE_SIZE && (
                 <nav aria-label="Katalog sahifalari" className="flex justify-center gap-4 py-3 text-sm">
                   <span aria-current="page">1-sahifa</span>
-                  <AppLink to={`${route.kind === 'home' ? '/jurnallar' : window.location.pathname}?sahifa=2`}>
+                  <AppLink to={pageHref(2)}>
                     Keyingi sahifa →
                   </AppLink>
-                  <AppLink to={`${route.kind === 'home' ? '/jurnallar' : window.location.pathname}?sahifa=${Math.ceil(totalResults / PAGE_SIZE)}`}>
+                  <AppLink to={pageHref(Math.ceil(totalResults / PAGE_SIZE))}>
                     Oxirgi sahifa
                   </AppLink>
                 </nav>
@@ -987,7 +1016,7 @@ function App() {
         )}
       </main>
 
-      <footer className="border-t">
+      <footer className="site-footer border-t">
         <div className={cn(SHELL, "grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4")}>
           <div className="space-y-3">
             <Brand />
@@ -1055,7 +1084,7 @@ function App() {
               Shartlar
             </AppLink>
           </nav>
-          <span className="text-xs text-muted-foreground">© 2026 IlmIz · MVP 0.1</span>
+          <span className="text-xs text-muted-foreground">© 2026 IlmIz · Ilmga yo‘l. Izlanishga ilhom.</span>
         </div>
       </footer>
 

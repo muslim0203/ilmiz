@@ -28,6 +28,7 @@ export default function ArticlePage({ id }: { id: string }) {
   const [related, setRelated] = useState<Article[]>(() => seeded.current?.related ?? []);
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState(false);
 
   useEffect(() => {
     if (seeded.current && String(seeded.current.article.id) === id) {
@@ -99,10 +100,16 @@ export default function ArticlePage({ id }: { id: string }) {
     ["DOI", article.doi],
   ];
 
-  const copy = (format: string, value: string) => {
-    void navigator.clipboard?.writeText(value);
-    setCopied(format);
-    window.setTimeout(() => setCopied(null), 1600);
+  const copy = async (format: string, value: string) => {
+    setCopyError(false);
+    setCopied(null);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(format);
+      window.setTimeout(() => setCopied(null), 1600);
+    } catch {
+      setCopyError(true);
+    }
   };
 
   return (
@@ -194,6 +201,7 @@ export default function ArticlePage({ id }: { id: string }) {
           {article.citations && (
             <>
               <h2 className="mt-8 text-lg font-semibold tracking-tight">Iqtibos formatlari</h2>
+              {copyError && <p role="status" className="mt-2 text-sm text-destructive">Nusxalashga ruxsat berilmadi. Iqtibos matnini belgilab, qo‘lda nusxalang.</p>}
               <div className="mt-2 grid gap-2">
                 {Object.entries(article.citations).map(([format, value]) => (
                   <div

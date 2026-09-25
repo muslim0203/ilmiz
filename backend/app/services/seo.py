@@ -1854,7 +1854,7 @@ padding:.2rem .7rem;font-size:.82rem}
 #root .seo-cta{margin:1.25rem 0 .5rem}
 #root .seo-shell a.seo-button{display:inline-flex;align-items:center;gap:.5rem;
 padding:.6rem 1.1rem;border-radius:.5rem;font-weight:600;font-size:.95rem;
-background:var(--primary,#1f5f4a);color:var(--primary-foreground,#fff)}
+background:var(--primary,#27577d);color:var(--primary-foreground,#fff)}
 #root .seo-shell a.seo-button:hover{text-decoration:none;opacity:.92}
 """.strip()
 

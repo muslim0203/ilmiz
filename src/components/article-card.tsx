@@ -16,13 +16,20 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
   const [citationsOpen, setCitationsOpen] = useState(false);
   const href = articlePath(article.id, article.title);
   const [copied, setCopied] = useState<string | null>(null);
+  const [copyError, setCopyError] = useState(false);
   const published =
     article.publicationDate || (article.year ? String(article.year) : "Sana ko‘rsatilmagan");
 
-  const copyCitation = (format: string, value: string) => {
-    void navigator.clipboard?.writeText(value);
-    setCopied(format);
-    window.setTimeout(() => setCopied(null), 1600);
+  const copyCitation = async (format: string, value: string) => {
+    setCopyError(false);
+    setCopied(null);
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(format);
+      window.setTimeout(() => setCopied(null), 1600);
+    } catch {
+      setCopyError(true);
+    }
   };
 
   const meta = [
@@ -33,7 +40,7 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
   ].filter(Boolean);
 
   return (
-    <Card className="gap-0 py-0 transition-colors hover:border-primary/40">
+    <Card className="catalog-card gap-0 py-0 transition-colors hover:border-primary/40">
       <div className="space-y-3 p-4 sm:p-5">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted text-[11px] font-semibold text-muted-foreground">
@@ -129,6 +136,7 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
         <>
           <Separator />
           <div className="grid gap-2 bg-muted/40 p-4 sm:p-5">
+            {copyError && <p role="status" className="text-sm text-destructive">Nusxalashga ruxsat berilmadi. Iqtibos matnini belgilab, qo‘lda nusxalang.</p>}
             {Object.entries(article.citations).map(([format, value]) => (
               <div
                 key={format}

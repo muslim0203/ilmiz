@@ -13,7 +13,7 @@ import type { Journal } from "@/types";
 export function JournalCard({ journal }: { journal: Journal }) {
   const href = journalPath(journal.id);
   return (
-    <Card className="group gap-0 py-0 transition-colors hover:border-primary/40 hover:bg-accent/40">
+    <Card className="catalog-card group gap-0 py-0 transition-colors hover:border-primary/40 hover:bg-accent/40">
       <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:gap-5 sm:p-5">
         <AppLink
           to={href}

@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./index.css";
+import "./moturidiy.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
