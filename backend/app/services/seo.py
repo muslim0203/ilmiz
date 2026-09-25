@@ -1204,6 +1204,11 @@ def _article_list(db: Session, page: int, *, recent: bool = False) -> PageMeta:
         description=clip(description, 158),
         path=path,
         body=body,
+        # "Yangi maqolalar" 14 kunlik oyna: sahifalar soni har kuni o'zgaradi,
+        # indekslangan `?sahifa=N` keyin 404 bo'lib Search Console'da
+        # to'planardi. 2-sahifadan boshlab noindex, lekin havolalar
+        # kuzatiladi — maqolalar baribir topiladi.
+        robots=NOINDEX if recent and page > 1 else INDEXABLE,
         jsonld=[
             {
                 "@type": "CollectionPage",
