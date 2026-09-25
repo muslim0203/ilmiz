@@ -1,5 +1,7 @@
-/* Adapted from moturidiy.uz / Ilm va meros, Figma DwaxgW3pTwgVsTP7GyTnhu,
-   desktop 13:2 and mobile 17:16. Content and controls belong to IlmIz. */
+/* Moturidiy.uz / "Ilm va meros" dizayn tizimidan moslashtirilgan uslub
+   (Figma DwaxgW3pTwgVsTP7GyTnhu, desktop 13:2, mobil 17:16). Mazmun va
+   boshqaruv elementlari IlmIz'niki. Hero rasmi: Registon maydoni,
+   Wikimedia Commons "Registan 01.jpg", CC0. */
 :root { --heading: #182f42; --bronze: #8d7556; --serif: "Source Serif 4", Georgia, serif; }
 .dark { --heading: #e5edf4; }
 body { font-family: "Manrope", sans-serif; }

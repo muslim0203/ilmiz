@@ -229,7 +229,7 @@ export default function HomePage({
             </div>
           </div>
           <div className="hero-photograph">
-            <img src="/design/moturidiy/architecture.webp" alt="Ko‘k gumbazli me’moriy majmua" width="768" height="432" fetchPriority="high" decoding="async" />
+            <img src="/design/moturidiy/architecture.webp" alt="Registon maydoni, Samarqand" width="1184" height="666" fetchPriority="high" decoding="async" />
           </div>
         </div>
       </section>
