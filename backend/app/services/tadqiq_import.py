@@ -421,10 +421,15 @@ def apply_match(
     if provenance_cache is None:
         provenance_cache = {}
     applied: dict[str, str] = {}
+    from .journal_edit import manually_edited
+
+    manual = manually_edited(db, journal.id)
 
     for column, attribute in JOURNAL_FIELDS:
         value = getattr(record, attribute)
-        if not value:
+        if not value or column in manual:
+            # Admin tekshirib kiritgan qiymat (masalan, to'g'ri sayt manzili)
+            # "ishlamayapti" deb almashtirilmasin.
             continue
         current = getattr(journal, column)
         if _is_empty(current):
@@ -455,10 +460,10 @@ def apply_match(
             db.add(profile)
         for column, attribute in PROFILE_FIELDS:
             value = getattr(record, attribute)
-            if value and _is_empty(getattr(profile, column)):
+            if value and column not in manual and _is_empty(getattr(profile, column)):
                 setattr(profile, column, value)
                 applied[column] = value
-        if record.description and _is_empty(profile.summary):
+        if record.description and "summary" not in manual and _is_empty(profile.summary):
             profile.summary = record.description
             applied["summary"] = "tavsif"
         if record.language and not profile.submission_languages:

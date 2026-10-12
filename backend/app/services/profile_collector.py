@@ -13,6 +13,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from . import completeness, netguard
+from .journal_edit import manually_edited
 from .text_clean import (
     BOILERPLATE_RE,
     MIN_PROSE_LENGTH,
@@ -424,11 +425,19 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
         latest_issue = compact(headings[0] if headings else current.title, 300)
 
     profile = journal.profile or JournalProfile(journal=journal)
-    profile.summary = summary
-    profile.aims_scope = aims_scope
+    # Admin qo'lda tuzatgan maydon sayt qayta yig'ilganda ustidan yozilmaydi
+    # (forma shuni va'da qiladi; ilgari profil maydonlari baribir almashardi).
+    manual = manually_edited(db, journal.id) if journal.id else set()
+
+    def assign(target, name: str, value) -> None:
+        if name not in manual:
+            setattr(target, name, value)
+
+    assign(profile, "summary", summary)
+    assign(profile, "aims_scope", aims_scope)
     address = clean_address(address)
-    profile.address = compact(address, 1000)
-    profile.latest_issue = latest_issue
+    assign(profile, "address", compact(address, 1000))
+    assign(profile, "latest_issue", latest_issue)
     profile.source_url = about.url if about else home.url
     profile.fetched_at = now
 
@@ -436,22 +445,22 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
     review_needles = ("peer review", "реценз", "taqriz")
     profile.peer_review = "Taqriz jarayoni jurnal saytida ko‘rsatilgan" if any(n in page_text for n in review_needles) else None
     frequency_match = re.search(r"(?:quarterly|monthly|annual|ежекварталь\w*|har chorak|yiliga)\D{0,30}", page_text, re.I)
-    profile.publication_frequency = compact(frequency_match.group(0), 200) if frequency_match else None
+    assign(profile, "publication_frequency", compact(frequency_match.group(0), 200) if frequency_match else None)
     founded_match = re.search(r"(?:издается с|founded|asos solingan)\s+(\d{4})", page_text, re.I)
     if founded_match:
-        journal.founded = int(founded_match.group(1))
+        assign(journal, "founded", int(founded_match.group(1)))
     typed_issns = re.findall(r"\b(\d{4}-\d{3}[\dX])\s*\((online|print)\)", page_text, re.I)
     for value, kind in typed_issns:
         if kind.lower() == "online":
-            journal.eissn = value
+            assign(journal, "eissn", value)
         elif kind.lower() == "print":
-            journal.issn = value
+            assign(journal, "issn", value)
     if not typed_issns:
         discovered_issns = list(dict.fromkeys(re.findall(r"\b\d{4}-\d{3}[\dX]\b", page_text, re.I)))
         if discovered_issns and not journal.issn:
-            journal.issn = discovered_issns[0]
+            assign(journal, "issn", discovered_issns[0])
         if len(discovered_issns) > 1 and not journal.eissn:
-            journal.eissn = discovered_issns[1]
+            assign(journal, "eissn", discovered_issns[1])
 
     language_labels = " ".join(label.lower() for page in pages.values() for label, _ in page.links)
     detected_languages: list[str] = []
@@ -464,7 +473,7 @@ def collect_profile(db: Session, journal: Journal) -> JournalProfile:
         if any(needle in language_labels for needle in needles):
             detected_languages.append(language)
     if detected_languages:
-        journal.languages = sorted({*journal.languages, *detected_languages})
+        assign(journal, "languages", sorted({*journal.languages, *detected_languages}))
         profile.submission_languages = detected_languages
 
     for model in (EditorialMember, JournalPolicy, JournalSection, JournalIndexingClaim, JournalLink):

@@ -1,15 +1,17 @@
-import { useState } from "react";
-import { CheckCircle2, PencilLine, Search, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, PencilLine, Search, Trash2, TriangleAlert } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import ContactEditor from "@/ContactEditor";
 import {
   loadJournalForEdit,
+  purgeForeignData,
   saveJournal,
   searchJournals,
   type JournalEditRecord,
@@ -38,7 +40,17 @@ const PROFILE_LABELS: Array<[keyof JournalEditValues, string]> = [
   ["summary", "Tavsif (profil)"],
   ["address", "Manzil"],
   ["latest_issue", "So‘nggi son"],
+  ["publication_frequency", "Nashr davriyligi"],
+  ["chief_editor", "Bosh muharrir"],
 ];
+// Jurnal sahifasining tahririyat bloklari — uzun matn, faqat qo'lda yoziladi.
+const EDITORIAL_LABELS: Array<[keyof JournalEditValues, string, string]> = [
+  ["about", "Jurnal haqida", "300–500 so‘z: jurnalning maqsadi, yo‘nalishlari, kimlar uchun, tarixi. Har abzas yangi qatordan."],
+  ["submission_info", "Maqola topshirish tartibi va talablari", "Qayerga va qanday yuboriladi, hajmi, rasmiylashtirish talablari."],
+  ["deadlines", "Muddatlar", "Masalan: maqolalar har chorak oxirigacha qabul qilinadi."],
+  ["fees", "Nashr to‘lovi", "Bepul yoki narxi va to‘lov tartibi."],
+];
+const ABOUT_WORDS = [300, 500] as const;
 
 /** Har bir maydonni forma uchun matnga aylantiradi. */
 function toText(value: unknown): string {
@@ -49,7 +61,7 @@ function toText(value: unknown): string {
 
 /** Formadagi matnni API kutgan turga qaytaradi. */
 function fromText(field: keyof JournalEditValues, text: string): unknown {
-  if (field === "fields" || field === "languages") {
+  if (field === "fields" || field === "languages" || field === "indexing") {
     return text
       .split(",")
       .map((item) => item.trim())
@@ -88,7 +100,7 @@ function Field({
   );
 }
 
-export default function JournalEditor() {
+export default function JournalEditor({ openSlug }: { openSlug?: string | null } = {}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<JournalSummary[] | null>(null);
   const [record, setRecord] = useState<JournalEditRecord | null>(null);
@@ -98,6 +110,7 @@ export default function JournalEditor() {
   const [message, setMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [purging, setPurging] = useState(false);
 
   const reset = (next: JournalEditRecord) => {
     setRecord(next);
@@ -136,6 +149,37 @@ export default function JournalEditor() {
       setError(caught instanceof Error ? caught.message : "Jurnal ochilmadi");
     }
   };
+
+  // "Sayt tekshiruvi" ro'yxatidan tanlangan jurnal shu yerda ochiladi.
+  useEffect(() => {
+    if (openSlug) void open(openSlug);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSlug]);
+
+  const purge = async () => {
+    if (!record) return;
+    setPurging(true);
+    setError(null);
+    try {
+      const result = await purgeForeignData(record.slug);
+      reset(result);
+      setMessage(`Boshqa saytdan yig‘ilgan ${result.removed.total} ta yozuv o‘chirildi.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "O‘chirilmadi");
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  const indexingDraft = (draft.indexing ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const toggleIndexing = (name: string, checked: boolean) => {
+    const next = checked ? [...indexingDraft, name] : indexingDraft.filter((item) => item !== name);
+    setDraft({ ...draft, indexing: next.join(", ") });
+  };
+  const aboutWords = (draft.about ?? "").split(/\s+/).filter(Boolean).length;
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -342,6 +386,67 @@ export default function JournalEditor() {
             </Field>
           ))}
 
+          {record.foreignData.total > 0 && (
+            <Alert>
+              <TriangleAlert />
+              <AlertDescription className="space-y-2">
+                <p>
+                  {record.foreignData.total} ta yozuv (aloqa, havola, tahririyat) rasmiy saytdan
+                  {record.foreignData.site ? ` (${record.foreignData.site})` : ""} emas, boshqa saytdan
+                  yig‘ilgan: {record.foreignData.hosts.join(", ")}. Sayt xato biriktirilgan bo‘lsa, avval
+                  to‘g‘ri manzilni saqlang, keyin bu yozuvlarni o‘chiring.
+                </p>
+                <Button type="button" size="sm" variant="outline" disabled={purging} onClick={() => void purge()}>
+                  <Trash2 className="size-4" /> {purging ? "O‘chirilmoqda..." : "Begona yozuvlarni o‘chirish"}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Separator />
+          <p className="text-sm font-semibold">Jurnal sahifasi uchun tahririyat bloklari</p>
+          {EDITORIAL_LABELS.map(([field, label, hint]) => (
+            <Field key={field} name={field} label={label} manual={record.manualFields.includes(field)}>
+              {(id) => (
+                <div className="space-y-1">
+                  <textarea
+                    id={id}
+                    className={`w-full rounded-md border bg-transparent p-3 text-sm ${field === "about" ? "min-h-48" : "min-h-20"}`}
+                    value={draft[field] ?? ""}
+                    placeholder={hint}
+                    onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+                  />
+                  {field === "about" && (
+                    <p
+                      className={`text-xs ${
+                        aboutWords === 0 || (aboutWords >= ABOUT_WORDS[0] && aboutWords <= ABOUT_WORDS[1])
+                          ? "text-muted-foreground"
+                          : "text-amber-600"
+                      }`}
+                    >
+                      {aboutWords} so‘z · tavsiya {ABOUT_WORDS[0]}–{ABOUT_WORDS[1]} so‘z
+                    </p>
+                  )}
+                </div>
+              )}
+            </Field>
+          ))}
+          <Field name="indexing" label="Indekslash" manual={record.manualFields.includes("indexing")}>
+            {() => (
+              <div className="grid gap-2 sm:grid-cols-3">
+                {record.choices.indexing.map((name) => (
+                  <label key={name} className="flex cursor-pointer items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={indexingDraft.includes(name)}
+                      onCheckedChange={(value) => toggleIndexing(name, value === true)}
+                    />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </Field>
+
           <Field
             name="description"
             label="Tavsif (katalog)"
@@ -397,7 +502,7 @@ export default function JournalEditor() {
           <Separator />
           {/* Alohida saqlanadi: aloqa ro'yxati butunlay almashtiriladi,
               jurnal maydonlari esa faqat o'zgarganlari yuboriladi. */}
-          <ContactEditor slug={record.slug} initial={record.contacts} />
+          <ContactEditor key={record.updatedAt ?? record.slug} slug={record.slug} initial={record.contacts} />
         </>
       )}
     </div>

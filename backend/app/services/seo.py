@@ -752,9 +752,9 @@ def _journal_list(db: Session, page: int, *, field: str | None = None, city: str
 
 
 def journal_description(journal: Journal) -> str | None:
-    """Haqiqiy tavsif: profil xulosasi yoki tahrirlangan tavsif; OAK placeholder emas."""
+    """Haqiqiy tavsif: tahririyat yozgani, profil xulosasi yoki katalog tavsifi; OAK placeholder emas."""
     profile = journal.profile
-    for candidate in ((profile.summary if profile else None), journal.description):
+    for candidate in ((profile.about if profile else None), (profile.summary if profile else None), journal.description):
         text = (candidate or "").strip()
         if text and text != OAK_PLACEHOLDER:
             return text
@@ -887,6 +887,15 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
     profile = journal.profile
     summary_full = journal_description(journal)
     summary = clip(summary_full, 400)
+    # Tahririyat qo'lda yozgan bloklar (admin panel).
+    about = ((profile.about if profile else None) or "").strip()
+    chief_editor = ((profile.chief_editor if profile else None) or "").strip()
+    submission_info = ((profile.submission_info if profile else None) or "").strip()
+    deadlines = ((profile.deadlines if profile else None) or "").strip()
+    fees = ((profile.fees if profile else None) or "").strip()
+    indexing = list((profile.indexing if profile else None) or []) or _dedupe(
+        [item.provider for item in journal.indexing_claims]
+    )
     aliases = alternate_names(journal.name, journal.languages)
     fields = list(journal.fields or [])
     registry = _registry_rows(db, journal)
@@ -923,7 +932,7 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
             extras.append(f"{total} ta maqola" + (f" ({span})" if span else ""))
         if extras:
             fallback += " " + ". ".join(extras) + "."
-        description = summary or fallback
+        description = clip(about, 158) if about else (summary or fallback)
 
     crumbs = [("Bosh sahifa", "/"), ("Jurnallar", "/jurnallar"), (clip(journal.name, 60), journal_path(slug))]
     if year:
@@ -947,6 +956,7 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         ("Boshqa yozuvda", ", ".join(aliases)),
         ("Tashkil etilgan", journal.founded),
         ("Nashr tillari", ", ".join(journal.languages or [])),
+        ("Bosh muharrir", chief_editor),
         ("Nashr davriyligi", profile.publication_frequency if profile else None),
         ("Ilmiy sohalari", ", ".join(fields)),
         ("OAK ixtisoslik kodi", ", ".join(_dedupe([f"{row.specialty_code} ({row.area})" if row.area else (row.specialty_code or "") for row in registry]))),
@@ -955,7 +965,7 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         ("OAK holati", "Ro‘yxatda" if active else "Ro‘yxatdan chiqarilgan"),
         ("Maqolalar indeksda", f"{total}" + (f" ({span})" if span else "") if total else None),
         ("Ochiq kirish", {"open": "Ha", "mixed": "Qisman"}.get(journal.access)),
-        ("Indekslash", ", ".join(_dedupe([item.provider for item in journal.indexing_claims]))),
+        ("Indekslash", ", ".join(indexing)),
     ]
     facts_html = "".join(
         f"<tr><th>{e(label)}</th><td>{e(value)}</td></tr>" for label, value in facts if value
@@ -972,10 +982,10 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
         f"<h1>{e(heading)}</h1>",
     ]
     if not year:
-        if summary:
-            parts.append(f'<p class="seo-lead">{e(summary)}</p>')
-        else:
-            parts.append(f'<p class="seo-lead">{e(description)}</p>')
+        # Tahririyat matni bo'lsa u to'liq holda "Jurnal haqida" blokida turadi —
+        # kirish qatorida takrorlansa sahifada bir matn ikki marta bo'lardi.
+        if not about:
+            parts.append(f'<p class="seo-lead">{e(summary or description)}</p>')
         if aliases:
             parts.append(f'<p class="seo-alias">Boshqa yozuvda: {e(", ".join(aliases))}</p>')
     parts.append(
@@ -990,6 +1000,24 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
     parts.append(site_link)
 
     if not year:
+        if about:
+            parts.append("<h2>Jurnal haqida</h2>")
+            parts.append("".join(f"<p>{e(block)}</p>" for block in _text_blocks(about)))
+        submission_link = next(
+            (web_url(item.url) for item in journal.links if item.kind == "submission" and web_url(item.url)), None
+        )
+        if submission_info:
+            parts.append("<h2>Maqola topshirish tartibi va talablari</h2>")
+            parts.append("".join(f"<p>{e(block)}</p>" for block in _text_blocks(submission_info)))
+            if submission_link:
+                parts.append(f'<p><a href="{e(submission_link)}" rel="noopener" target="_blank">Maqola topshirish sahifasi</a></p>')
+        if deadlines or fees:
+            parts.append("<h2>Muddatlar va to‘lov</h2>")
+            rows_html = "".join(
+                f"<tr><th>{label}</th><td>{e(value)}</td></tr>"
+                for label, value in (("Muddatlar", deadlines), ("Nashr to‘lovi", fees)) if value
+            )
+            parts.append(f'<table class="seo-facts"><tbody>{rows_html}</tbody></table>')
         aims = (profile.aims_scope if profile else None) or ""
         if aims and aims.strip() != summary_full:
             parts.append("<h2>Maqsad va yo‘nalish</h2>")
@@ -1003,9 +1031,9 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
             parts.append(
                 "<ul>" + "".join(f"<li>{e(item.name)}</li>" for item in journal.sections[:20]) + "</ul>"
             )
-        if journal.editorial_members:
+        if journal.editorial_members or chief_editor:
             parts.append("<h2>Tahririyat</h2>")
-            members = []
+            members = [f"<li>{e(chief_editor)} <span class=\"seo-item-meta\">Bosh muharrir</span></li>"] if chief_editor else []
             for member in journal.editorial_members[:20]:
                 detail = " — ".join(bit for bit in [member.role, member.affiliation] if bit)
                 members.append(f"<li>{e(member.name)}" + (f" <span class=\"seo-item-meta\">{e(detail)}</span>" if detail else "") + "</li>")
@@ -1098,11 +1126,15 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
             faq.append((f"{journal.name} jurnalini kim nashr etadi?", f"{journal.publisher}" + (f" ({city})" if city else "") + "."))
         if fields:
             faq.append((f"{journal.name} qaysi sohalar bo‘yicha maqola qabul qiladi?", "Sohalar: " + ", ".join(fields) + "."))
-        if website or emails:
+        if submission_info:
+            faq.append((f"{journal.name} jurnaliga maqola qanday topshiriladi?", clip(submission_info, 400)))
+        elif website or emails:
             how = f"Maqola jurnalning rasmiy sayti orqali topshiriladi: {website}" if website else "Tahririyat bilan bog‘laning"
             if emails:
                 how += f". E-pochta: {', '.join(emails[:2])}"
             faq.append((f"{journal.name} jurnaliga maqola qanday topshiriladi?", how + "."))
+        if fees:
+            faq.append((f"{journal.name} jurnalida maqola chop etish pullikmi?", clip(fees, 300)))
         if faq:
             parts.append("<h2>Ko‘p so‘raladigan savollar</h2>")
             parts.append("".join(f"<h3>{e(q)}</h3><p>{e(a)}</p>" for q, a in faq))
@@ -1133,17 +1165,20 @@ def _journal_page(db: Session, slug: str, year: int | None = None, page: int = 1
     )
     if same_as:
         periodical["sameAs"] = same_as if len(same_as) > 1 else same_as[0]
-    if summary:
-        periodical["description"] = summary
+    if about or summary:
+        periodical["description"] = clip(about, 500) if about else summary
     if journal.founded:
         periodical["foundingDate"] = str(journal.founded)
     if fields:
         periodical["about"] = [{"@type": "Thing", "name": name} for name in fields]
-    if journal.editorial_members:
-        periodical["editor"] = [
-            {"@type": "Person", "name": member.name, **({"jobTitle": member.role} if member.role else {})}
-            for member in journal.editorial_members[:10]
-        ]
+    editors = ([{"@type": "Person", "name": chief_editor, "jobTitle": "Bosh muharrir"}] if chief_editor else []) + [
+        {"@type": "Person", "name": member.name, **({"jobTitle": member.role} if member.role else {})}
+        for member in journal.editorial_members[:10]
+    ]
+    if editors:
+        periodical["editor"] = editors
+    if profile and profile.publication_frequency:
+        periodical["publicationFrequency"] = profile.publication_frequency
     if emails:
         periodical["contactPoint"] = {"@type": "ContactPoint", "email": emails[0], "contactType": "editorial office"}
     if addresses:
@@ -1221,6 +1256,11 @@ def _article_list(db: Session, page: int, *, recent: bool = False) -> PageMeta:
             _breadcrumbs(crumbs),
         ],
     )
+
+
+def _text_blocks(value: str) -> list[str]:
+    """Qo'lda yozilgan matn: bo'sh qator — yangi abzas, oddiy qator ham abzas."""
+    return [block.strip() for block in re.split(r"\n\s*\n|\n", value) if block.strip()]
 
 
 # Google qidiruv natijasida ~60 belgigacha ko'rsatadi; uzunrog'i kesiladi va

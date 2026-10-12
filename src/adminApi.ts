@@ -155,6 +155,22 @@ export type JournalEditValues = {
   summary: string | null;
   address: string | null;
   latest_issue: string | null;
+  publication_frequency: string | null;
+  /** Jurnal sahifasining tahririyat bloklari — faqat qo'lda yoziladi. */
+  about: string | null;
+  chief_editor: string | null;
+  submission_info: string | null;
+  deadlines: string | null;
+  fees: string | null;
+  indexing: string[];
+};
+
+/** Rasmiy saytdan boshqa hostdan yig'ilgan yozuvlar (xato biriktirilgan sayt izi). */
+export type ForeignData = {
+  site: string | null;
+  total: number;
+  byTable: Record<string, number>;
+  hosts: string[];
 };
 
 export type ContactKind = "address" | "email" | "phone";
@@ -175,8 +191,9 @@ export type JournalEditRecord = {
   /** Qo'lda tahrirlangan maydonlar — importlar bularga tegmaydi. */
   manualFields: string[];
   updatedAt: string | null;
-  choices: { oakStatus: string[]; access: string[] };
+  choices: { oakStatus: string[]; access: string[]; indexing: string[] };
   contacts: JournalContact[];
+  foreignData: ForeignData;
   /** Ball 10 ta belgining nechtasi to'ldirilganini o'lchaydi. */
   completeness: { score: number | null; missing: string[] };
 };
@@ -246,4 +263,41 @@ export function saveArticleFields(id: number, fields: string[] | null) {
     method: "PUT",
     body: JSON.stringify({ fields }),
   });
+}
+
+export type SiteCheckRow = {
+  slug: string;
+  name: string;
+  website: string | null;
+  problems: string[];
+  /** Sayt manzili admin tomonidan tasdiqlangan. */
+  manual: boolean;
+};
+
+export function loadSiteCheck() {
+  return request<{ total: number; journals: SiteCheckRow[] }>("/api/admin/journals/site-check");
+}
+
+/** Sayt tuzatilgach — eski (begona) saytdan yig'ilgan aloqa/havola/tahririyatni o'chiradi. */
+export function purgeForeignData(slug: string) {
+  return request<JournalEditRecord & { removed: ForeignData }>(
+    `/api/admin/journals/${encodeURIComponent(slug)}/foreign-data`,
+    { method: "DELETE" },
+  );
+}
+
+/** «Jurnal haqida» tavsifi yo'q jurnallar CSV'ini yuklab beradi. */
+export async function downloadMissingAboutCsv(): Promise<void> {
+  const token = getAdminToken();
+  const response = await fetch("/api/admin/journals/missing-about.csv", {
+    credentials: "same-origin",
+    headers: token ? { "X-Admin-Token": token } : {},
+  });
+  if (!response.ok) throw new Error(`API ${response.status}`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "jurnallar-tavsifsiz.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }

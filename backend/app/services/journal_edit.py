@@ -19,7 +19,17 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Journal, JournalContact, JournalProfile, JournalProfileField
+from ..models import (
+    EditorialMember,
+    Journal,
+    JournalContact,
+    JournalIndexingClaim,
+    JournalLink,
+    JournalPolicy,
+    JournalProfile,
+    JournalProfileField,
+    JournalSection,
+)
 from . import completeness, netguard
 from .text_clean import balance_parens as _balance_parens, is_valid_phone
 
@@ -37,13 +47,27 @@ LIST_FIELDS = ("fields", "languages")
 # Bular `journal_profiles` da turadi, `journals` da emas. To'liqlik bali
 # aynan shularni sanaydi, shuning uchun ularsiz qo'lda ishlashning ballga
 # ta'siri bo'lmasdi.
-PROFILE_FIELDS = ("summary", "address", "latest_issue")
+PROFILE_FIELDS = (
+    "summary", "address", "latest_issue", "publication_frequency",
+    # Jurnal sahifasining tahririyat bloklari — faqat qo'lda yoziladi.
+    "about", "chief_editor", "submission_info", "deadlines", "fees",
+)
+PROFILE_LIST_FIELDS = ("indexing",)
 EDITABLE = (
     TEXT_FIELDS
     + LIST_FIELDS
     + PROFILE_FIELDS
+    + PROFILE_LIST_FIELDS
     + ("issn", "eissn", "oak_status", "access", "founded")
 )
+# Belgilanadigan indekslash bazalari (ro'yxatdan tashqarisi qabul qilinmaydi —
+# aks holda bir baza "RINC", "РИНЦ", "eLibrary" bo'lib uch xil yozilardi).
+INDEXING_CHOICES = (
+    "Scopus", "Web of Science", "RINC (eLibrary)", "Google Scholar", "Crossref", "DOAJ",
+    "OpenAlex", "Index Copernicus", "CyberLeninka", "ResearchBib", "Dimensions", "ERIH PLUS",
+)
+# "Jurnal haqida" tavsifi uchun tavsiya etilgan hajm (so'z).
+ABOUT_WORDS = (300, 500)
 
 # Bo'sh qoldirilishi mumkin bo'lgan maydonlar. Qolganlari majburiy — jurnalning
 # nomi yoki nashriyoti bo'sh bo'lib qolsa, yozuv ma'nosini yo'qotadi.
@@ -113,6 +137,12 @@ def clean(field: str, value: Any) -> Any:
         return _clean_website("" if value is None else str(value))
     if field in LIST_FIELDS:
         return _clean_list(field, value)
+    if field == "indexing":
+        chosen = _clean_list(field, value)
+        unknown = [item for item in chosen if item not in INDEXING_CHOICES]
+        if unknown:
+            raise ValidationError(f"Noma’lum indekslash bazasi: {', '.join(unknown)}")
+        return chosen
     if field == "oak_status":
         text = str(value or "").strip()
         if text not in OAK_STATUSES:
@@ -204,9 +234,14 @@ def apply_edits(
 
     cleaned = {field: clean(field, value) for field, value in changes.items()}
     warnings = duplicate_issn_warnings(db, journal, cleaned)
+    if cleaned.get("about"):
+        words = len(cleaned["about"].split())
+        low, high = ABOUT_WORDS
+        if not low <= words <= high:
+            warnings.append(f"«Jurnal haqida» {words} so‘z — tavsiya etilgan hajm {low}–{high} so‘z.")
 
     profile = None
-    if any(field in PROFILE_FIELDS for field in cleaned):
+    if any(field in PROFILE_FIELDS or field in PROFILE_LIST_FIELDS for field in cleaned):
         profile = db.scalar(
             select(JournalProfile).where(JournalProfile.journal_id == journal.id)
         )
@@ -218,7 +253,7 @@ def apply_edits(
 
     applied: dict[str, Any] = {}
     for field, value in cleaned.items():
-        target = profile if field in PROFILE_FIELDS else journal
+        target = profile if field in PROFILE_FIELDS or field in PROFILE_LIST_FIELDS else journal
         if getattr(target, field) == value:
             continue
         setattr(target, field, value)
@@ -241,8 +276,9 @@ def editable_payload(db: Session, journal: Journal) -> dict[str, Any]:
     )
     values: dict[str, Any] = {}
     for field in EDITABLE:
-        source = profile if field in PROFILE_FIELDS else journal
+        source = profile if field in PROFILE_FIELDS or field in PROFILE_LIST_FIELDS else journal
         values[field] = getattr(source, field, None) if source is not None else None
+    values["indexing"] = values.get("indexing") or []
     return {
         "slug": journal.slug,
         "values": values,
@@ -255,17 +291,133 @@ def editable_payload(db: Session, journal: Journal) -> dict[str, Any]:
         "choices": {
             "oakStatus": sorted(OAK_STATUSES),
             "access": sorted(ACCESS_LEVELS),
+            "indexing": list(INDEXING_CHOICES),
         },
+        "foreignData": foreign_scraped(db, journal),
     }
+
+
+# --- Boshqa saytdan yig'ilgan ma'lumot ----------------------------------
+
+# Bu manbalar jurnal saytining o'rnini bosmaydi, lekin ishonchli ikkilamchi
+# manba — ulardan kelgan yozuvlar "begona" hisoblanmaydi.
+TRUSTED_SOURCE_HOSTS = ("tadqiq.uz", "oak.uz", "openalex.org", "issn.org", "crossref.org")
+_SCRAPED_MODELS = (JournalLink, JournalContact, EditorialMember, JournalPolicy, JournalSection, JournalIndexingClaim)
+
+
+def _site_root(url: str | None) -> str:
+    """`https://journals.tnmu.uz/x` → `tnmu.uz` (jurnal platformasi subdomeni ham o'ziniki)."""
+    from urllib.parse import urlsplit
+
+    try:
+        host = (urlsplit(url or "").hostname or "").lower()
+    except ValueError:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    parts = host.split(".")
+    if len(parts) > 2 and parts[-2] in ("ac", "co", "edu", "gov", "org", "com", "net"):
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:])
+
+
+def _is_foreign_trusted(root: str) -> bool:
+    return any(root == trusted or root.endswith("." + trusted) for trusted in TRUSTED_SOURCE_HOSTS)
+
+
+def _is_foreign(source_url: str | None, site: str) -> bool:
+    if not source_url or source_url == MANUAL_SOURCE or not site:
+        return False
+    root = _site_root(source_url)
+    if not root or root == site:
+        return False
+    return not _is_foreign_trusted(root)
+
+
+def missing_about_csv(db: Session) -> str:
+    """«Jurnal haqida» bo'sh jurnallar CSV'i — tahririyat shu tartibda yozadi."""
+    import csv
+    import io
+
+    from sqlalchemy import func
+
+    from ..models import Article
+
+    counts = dict(
+        db.execute(
+            select(Article.journal_id, func.count())
+            .where(Article.is_deleted.is_(False))
+            .group_by(Article.journal_id)
+        ).all()
+    )
+    profiles = {profile.journal_id: profile for profile in db.scalars(select(JournalProfile))}
+    rows = []
+    for journal in db.scalars(select(Journal)):
+        profile = profiles.get(journal.id)
+        if profile is not None and (profile.about or "").strip():
+            continue
+        summary_words = len((profile.summary or "").split()) if profile else 0
+        rows.append((counts.get(journal.id, 0), journal, summary_words))
+    rows.sort(key=lambda item: (-item[0], item[1].name))
+    buffer = io.StringIO()
+    buffer.write("﻿")  # Excel UTF-8'ni tanisin
+    writer = csv.writer(buffer)
+    writer.writerow(["slug", "nomi", "issn", "maqolalar", "sayt", "avtomatik_tavsif_sozlari", "sahifa"])
+    for articles, journal, words in rows:
+        writer.writerow([
+            journal.slug, journal.name, journal.issn or journal.eissn or "", articles,
+            journal.website or "", words, f"/jurnal/{journal.slug}",
+        ])
+    return buffer.getvalue()
+
+
+def foreign_scraped(db: Session, journal: Journal, *, purge: bool = False) -> dict[str, Any]:
+    """Jurnalning rasmiy saytidan boshqa hostdan yig'ilgan yozuvlar.
+
+    Jurnalga xato sayt biriktirilgan bo'lsa (OAK reestrida ham uchraydi),
+    profil yig'uvchi aloqa, tahririyat va havolalarni o'sha begona saytdan
+    olgan. Sayt tuzatilgandan keyin ular sahifada qolib ketmasligi kerak.
+    `purge=True` — o'chiradi (qo'lda kiritilganlarga tegmaydi).
+    """
+    site = _site_root(journal.website)
+    counts: dict[str, int] = {}
+    hosts: set[str] = set()
+    for model in _SCRAPED_MODELS:
+        rows = [row for row in db.scalars(select(model).where(model.journal_id == journal.id)) if _is_foreign(row.source_url, site)]
+        if rows:
+            counts[model.__tablename__] = len(rows)
+            hosts.update(_site_root(row.source_url) for row in rows)
+            if purge:
+                for row in rows:
+                    db.delete(row)
+    fields = [
+        row for row in db.scalars(select(JournalProfileField).where(JournalProfileField.journal_id == journal.id))
+        if row.verification_status != MANUAL_STATUS and _is_foreign(row.source_url, site)
+    ]
+    if fields:
+        counts[JournalProfileField.__tablename__] = len(fields)
+        hosts.update(_site_root(row.source_url) for row in fields)
+        if purge:
+            for row in fields:
+                db.delete(row)
+    if purge and counts:
+        db.flush()
+        completeness.refresh(db, journal)
+        db.commit()
+        db.refresh(journal)
+    return {"site": site or None, "total": sum(counts.values()), "byTable": counts, "hosts": sorted(hosts)}
 
 
 __all__ = [
     "EDITABLE",
+    "INDEXING_CHOICES",
     "ValidationError",
     "apply_edits",
     "clean",
     "editable_payload",
+    "foreign_scraped",
     "manually_edited",
+    "missing_about_csv",
 ]
 
 

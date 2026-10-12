@@ -74,6 +74,29 @@ class AdminArticleFieldsTest(unittest.TestCase):
         self.assertFalse(reset["fieldsManual"])
         self.assertEqual(reset["fields"], ["Filologiya"])
 
+    def test_site_check_csv_and_foreign_purge(self) -> None:
+        from backend.app.models import JournalLink
+
+        journal = self.db.get(Journal, self.article.journal_id)
+        journal.website = "https://togri.uz"
+        self.db.add(JournalLink(journal_id=journal.id, kind="submission", url="https://begona.uz/s",
+                                source_url="https://begona.uz/about"))
+        self.db.commit()
+
+        check = self.client.get("/api/admin/journals/site-check", headers=HEADERS).json()
+        problems = next(row for row in check["journals"] if row["slug"] == "multi")["problems"]
+        self.assertTrue(any("begona.uz" in item for item in problems))
+
+        csv_response = self.client.get("/api/admin/journals/missing-about.csv", headers=HEADERS)
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertIn("Ko'p sohali", csv_response.text)
+
+        record = self.client.get("/api/admin/journals/multi", headers=HEADERS).json()
+        self.assertEqual(record["foreignData"]["total"], 1)
+        purged = self.client.delete("/api/admin/journals/multi/foreign-data", headers=HEADERS).json()
+        self.assertEqual(purged["removed"]["total"], 1)
+        self.assertEqual(purged["foreignData"]["total"], 0)
+
     def test_requires_admin(self) -> None:
         self.assertIn(self.client.get(f"/api/admin/articles/{self.article.id}").status_code, (401, 403))
 

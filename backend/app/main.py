@@ -1029,6 +1029,72 @@ class JournalEditInput(BaseModel):
     summary: str | None = None
     address: str | None = None
     latest_issue: str | None = None
+    publication_frequency: str | None = Field(default=None, max_length=300)
+    # Jurnal sahifasining tahririyat bloklari.
+    about: str | None = Field(default=None, max_length=8000)
+    chief_editor: str | None = Field(default=None, max_length=500)
+    submission_info: str | None = Field(default=None, max_length=6000)
+    deadlines: str | None = Field(default=None, max_length=2000)
+    fees: str | None = Field(default=None, max_length=2000)
+    indexing: list[str] | None = Field(default=None, max_length=20)
+
+
+@admin.get("/journals/site-check")
+def admin_site_check(db: Session = Depends(get_db)) -> dict[str, object]:
+    """Sayti noto'g'ri bo'lishi mumkin bo'lgan jurnallar — admin ko'rib chiqadi.
+
+    Avtomatik tuzatilmaydi: maqolalar boshqa platformada (OpenAlex, slib.uz)
+    turishi qonuniy. Faqat nomuvofiqlik ko'rsatiladi.
+    """
+    oai_hosts: dict[int, set[str]] = {}
+    for journal_id, base_url in db.execute(select(HarvestSource.journal_id, HarvestSource.base_url)):
+        oai_hosts.setdefault(journal_id, set()).add(journal_edit._site_root(base_url))
+    # Bir universitet platformasida bir nechta jurnal bo'lishi qonuniy
+    # (journals.tnmu.uz/...). Shubhali holat — aynan bir xil manzil.
+    def same_page(url: str | None) -> str:
+        return (url or "").strip().lower().removeprefix("https://").removeprefix("http://").removeprefix("www.").rstrip("/")
+
+    shared: dict[str, int] = {}
+    journals = list(db.scalars(select(Journal).order_by(Journal.name)))
+    for journal in journals:
+        if same_page(journal.website):
+            shared[same_page(journal.website)] = shared.get(same_page(journal.website), 0) + 1
+    rows = []
+    for journal in journals:
+        root = journal_edit._site_root(journal.website)
+        problems: list[str] = []
+        if not root:
+            problems.append("sayt ko‘rsatilmagan")
+        foreign_oai = sorted(
+            host for host in oai_hosts.get(journal.id, set())
+            if host and root and host != root and not journal_edit._is_foreign_trusted(host)
+        )
+        if foreign_oai:
+            problems.append("maqolalar boshqa saytdan yig‘iladi: " + ", ".join(foreign_oai))
+        foreign = journal_edit.foreign_scraped(db, journal) if root else {"total": 0, "hosts": []}
+        if foreign["total"]:
+            problems.append(f"{foreign['total']} ta yozuv boshqa saytdan: " + ", ".join(foreign["hosts"]))
+        if shared.get(same_page(journal.website), 0) > 1:
+            problems.append(f"aynan shu manzil yana {shared[same_page(journal.website)] - 1} ta jurnalga biriktirilgan")
+        if problems:
+            rows.append({
+                "slug": journal.slug,
+                "name": journal.name,
+                "website": journal.website,
+                "problems": problems,
+                "manual": "website" in journal_edit.manually_edited(db, journal.id),
+            })
+    return {"total": len(rows), "journals": rows}
+
+
+@admin.get("/journals/missing-about.csv")
+def admin_missing_about_csv(db: Session = Depends(get_db)) -> Response:
+    """«Jurnal haqida» tavsifi kiritilmagan jurnallar (eng ko'p maqolali birinchi)."""
+    return Response(
+        content=journal_edit.missing_about_csv(db),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="jurnallar-tavsifsiz.csv"'},
+    )
 
 
 @admin.get("/journals")
@@ -1110,6 +1176,24 @@ def admin_edit_contacts(
     except journal_edit.ValidationError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"contacts": contacts, "warnings": warnings}
+
+
+@admin.get("/journals/{slug}/foreign-data")
+def admin_foreign_data(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    return journal_edit.foreign_scraped(db, _journal_or_404(slug, db))
+
+
+@admin.delete("/journals/{slug}/foreign-data")
+def admin_purge_foreign_data(slug: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    """Rasmiy saytdan boshqa hostdan yig'ilgan aloqa, tahririyat va havolalarni o'chiradi.
+
+    Sayt manzili tuzatilgandan keyin ishlatiladi — eski (begona) saytdan
+    olingan ma'lumot sahifada qolib ketmasin. Qo'lda kiritilganlarga tegmaydi.
+    """
+    journal = _journal_or_404(slug, db)
+    removed = journal_edit.foreign_scraped(db, journal, purge=True)
+    seo.invalidate()
+    return {"removed": removed, **journal_edit.editable_payload(db, journal), "contacts": journal_edit.contacts_payload(journal)}
 
 
 @admin.patch("/journals/{slug}")

@@ -217,6 +217,10 @@ def main() -> int:
         "--steps", default=",".join(CLEAN_STEPS), help=f"Vergul bilan: {', '.join(CLEAN_STEPS)}"
     )
     clean_cmd.add_argument("--report-dir", type=Path, help="CSV hisobotlar katalogi")
+    missing_about = subparsers.add_parser(
+        "export-missing-about", help="«Jurnal haqida» tavsifi kiritilmagan jurnallar CSV'i"
+    )
+    missing_about.add_argument("--out", type=Path, required=True, help="CSV fayl yo'li")
     dedupe_cmd = subparsers.add_parser(
         "dedupe-articles", help="Takror maqolalarni (jurnal + sarlavha + yil) kanonik nusxaga birlashtirish"
     )
@@ -422,6 +426,12 @@ def main() -> int:
                 }, ensure_ascii=False, indent=2))
                 return 0
             print(json.dumps(indexnow.submit(urls), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "export-missing-about":
+            from backend.app.services.journal_edit import missing_about_csv
+
+            args.out.write_text(missing_about_csv(db), encoding="utf-8")
+            print(json.dumps({"fayl": str(args.out)}, ensure_ascii=False))
             return 0
         if args.command == "dedupe-articles":
             result = dedupe_articles(db, dry_run=not args.apply, report_dir=args.report_dir)

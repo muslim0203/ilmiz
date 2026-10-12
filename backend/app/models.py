@@ -58,6 +58,14 @@ class JournalProfile(Base):
     submission_languages: Mapped[list[str]] = mapped_column(JSON, default=list)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     latest_issue: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Tahririyat qo'lda yozadigan bloklar (admin panel). Avtomatik yig'uvchi
+    # ularga tegmaydi — sayt sahifalaridan bunday matnni ishonchli olib bo'lmaydi.
+    about: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chief_editor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submission_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deadlines: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    indexing: Mapped[list[str]] = mapped_column(JSON, default=list)
     completeness_score: Mapped[float] = mapped_column(Float, default=0)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

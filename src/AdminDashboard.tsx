@@ -10,6 +10,7 @@ import {
   Database,
   ExternalLink,
   FileSearch,
+  Globe2,
   ListRestart,
   PencilLine,
   RefreshCw,
@@ -36,6 +37,7 @@ import {
 import { ModeToggle } from "@/components/mode-toggle";
 import ArticleFieldEditor from "@/ArticleFieldEditor";
 import JournalEditor from "@/JournalEditor";
+import SiteCheck from "@/SiteCheck";
 import {
   AdminAuthError,
   getAdminToken,
@@ -164,6 +166,7 @@ function WorkerNote({ title, command }: { title: string; command: string }) {
 }
 
 export default function AdminDashboard({ onClose }: { onClose: () => void }) {
+  const [editSlug, setEditSlug] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<AdminDashboardData | null>(null);
   const [jobs, setJobs] = useState<AuditJob[]>([]);
   const [profileJobs, setProfileJobs] = useState<ProfileJob[]>([]);
@@ -430,7 +433,27 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <JournalEditor />
+            <JournalEditor openSlug={editSlug} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe2 className="size-4" /> Sayt tekshiruvi
+            </CardTitle>
+            <CardDescription>
+              Ba’zi jurnallarga boshqa sayt biriktirilgan: maqolalar yoki aloqa ma’lumotlari begona
+              saytdan yig‘ilgan. Sayt manzilini qo‘lda tuzating — importlar uni qayta almashtirmaydi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SiteCheck
+              onEdit={(slug) => {
+                setEditSlug(slug);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
           </CardContent>
         </Card>
 
