@@ -301,3 +301,31 @@ export async function downloadMissingAboutCsv(): Promise<void> {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+export type AdminGuide = {
+  id: number;
+  slug: string;
+  title: string;
+  summary: string | null;
+  body: string;
+  isPublished: boolean;
+  words: number;
+  updatedAt: string | null;
+};
+
+export type GuideInput = Pick<AdminGuide, "slug" | "title" | "summary" | "body" | "isPublished">;
+
+export function loadGuides() {
+  return request<{ guides: AdminGuide[] }>("/api/admin/guides");
+}
+
+export function saveGuide(id: number | null, values: GuideInput) {
+  return request<AdminGuide>(id === null ? "/api/admin/guides" : `/api/admin/guides/${id}`, {
+    method: id === null ? "POST" : "PUT",
+    body: JSON.stringify(values),
+  });
+}
+
+export function deleteGuide(id: number) {
+  return request<{ deleted: number }>(`/api/admin/guides/${id}`, { method: "DELETE" });
+}

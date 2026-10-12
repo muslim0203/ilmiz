@@ -37,6 +37,7 @@ import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
 
 import AboutPage from "@/AboutPage";
+import CitationTool from "@/CitationTool";
 import HomePage from "@/HomePage";
 import PrivacyPage from "@/PrivacyPage";
 import TermsPage from "@/TermsPage";
@@ -116,7 +117,9 @@ function App() {
   // ko'rsatiladi. Ilgari u katalog + drawer edi: Googlebot render qilgach
   // jurnal nomi bilan bir sahifada 50 ta boshqa jurnal nomi turardi, server
   // HTML'dagi profil, tahririyat va OAK reestri esa yo'qolardi.
-  const isArchive = route.kind === 'recent' || ('page' in route && route.page > 1) || route.kind === 'journal';
+  // Qo'llanmalar ham serverda tayyorlanadi (admin yozgan matn) — o'sha HTML ko'rsatiladi.
+  const isArchive = route.kind === 'recent' || ('page' in route && route.page > 1) || route.kind === 'journal' ||
+    route.kind === 'guides' || route.kind === 'guide';
   useEffect(() => { void syncHead(); }, [route]);
   const view: View =
     route.kind === "articles" || route.kind === "search" ? "articles" : "journals";
@@ -536,6 +539,8 @@ function App() {
           <ArchivePage path={window.location.pathname + window.location.search} />
         ) : route.kind === "article" ? (
           <ArticlePage id={route.id} />
+        ) : route.kind === "citation" ? (
+          <CitationTool />
         ) : route.kind === "about" ? (
           <AboutPage stats={platformStats} />
         ) : route.kind === "privacy" ? (
@@ -1076,6 +1081,12 @@ function App() {
           <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <AppLink to="/loyiha" className="text-sm text-muted-foreground hover:text-foreground">
               Loyiha haqida
+            </AppLink>
+            <AppLink to="/iqtibos" className="text-sm text-muted-foreground hover:text-foreground">
+              Iqtibos generatori
+            </AppLink>
+            <AppLink to="/yoriqnoma" className="text-sm text-muted-foreground hover:text-foreground">
+              Yo‘riqnoma
             </AppLink>
             <AppLink to="/maxfiylik" className="text-sm text-muted-foreground hover:text-foreground">
               Maxfiylik

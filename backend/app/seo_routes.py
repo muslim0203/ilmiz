@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .db import get_db
-from .models import Article, Journal
+from .models import Article, Guide, Journal
 from .services import article_quality, seo
 
 router = APIRouter(include_in_schema=False)
@@ -160,6 +160,7 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
             ("/yangi-maqolalar", "daily", "0.9"),
             ("/sohalar", "weekly", "0.8"),
             ("/shaharlar", "weekly", "0.7"),
+            ("/iqtibos", "monthly", "0.6"),
             ("/loyiha", "monthly", "0.4"),
             ("/maxfiylik", "yearly", "0.2"),
             ("/shartlar", "yearly", "0.2"),
@@ -169,6 +170,15 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
             yield _url(seo.absolute(seo.field_path(name)), changefreq="weekly", priority="0.8")
         for name in seo.cities(db):
             yield _url(seo.absolute(seo.city_path(name)), changefreq="weekly", priority="0.6")
+        # Qo'llanmalar: faqat chop etilganlari; ro'yxat sahifasi esa bittasi
+        # bo'lsa ham bo'lganda (bo'sh `/yoriqnoma` — `noindex`).
+        guides = db.execute(
+            select(Guide.slug, Guide.updated_at).where(Guide.is_published.is_(True)).order_by(Guide.slug)
+        ).all()
+        if guides:
+            yield _url(seo.absolute("/yoriqnoma"), changefreq="weekly", priority="0.6")
+        for slug, updated in guides:
+            yield _url(seo.absolute(f"/yoriqnoma/{slug}"), _iso(updated), "monthly", "0.6")
         # `?sahifa=N` sahifalari endi `noindex` — sitemap'da bo'lmasligi kerak.
         # Ular baribir 1-sahifadan havola orqali skanerlanadi.
 

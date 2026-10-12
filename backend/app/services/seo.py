@@ -21,7 +21,7 @@ from dataclasses import dataclass, field as dataclass_field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import Article, Journal, OakRegistryEntry
+from ..models import Article, Guide, Journal, OakRegistryEntry
 from . import article_quality
 from .article_text import clean_markup, display_title, paragraphs
 from .search_text import normalize
@@ -694,13 +694,18 @@ def _journal_list(db: Session, page: int, *, field: str | None = None, city: str
     ).all()
     article_total = sum(counts.get(item, 0) for item in (allowed if allowed is not None else counts))
 
+    specialty = specialty_map(db)["by_field"].get(field) if field else None
     if field:
         base = field_path(field)
         heading = f"{field} sohasidagi OAK jurnallari"
-        title = f"{field} — OAK jurnallari va ilmiy maqolalar"
+        title = (
+            f"{field} ({specialty[0]}) — OAK jurnallari" if specialty
+            else f"{field} — OAK jurnallari va ilmiy maqolalar"
+        )
         description = (
             f"{field} sohasi bo‘yicha OAK ro‘yxatidagi {total} ta ilmiy jurnal va "
             f"{article_total} ta maqola. ISSN, nashriyot va shahar ma’lumotlari bilan."
+            + (f" OAK ixtisoslik shifri: {specialty[0]}." if specialty else "")
         )
         crumbs = [("Bosh sahifa", "/"), ("Sohalar", "/sohalar"), (field, base)]
     elif city:
@@ -728,6 +733,10 @@ def _journal_list(db: Session, page: int, *, field: str | None = None, city: str
         _crumbs(crumbs)
         + f"<h1>{e(heading)}{e(suffix)}</h1>"
         + f'<p class="seo-lead">{e(description)}</p>'
+        + (
+            f'<p class="seo-alias">OAK ixtisoslik shifri: <strong>{e(specialty[0])}</strong> — {e(specialty[1])}</p>'
+            if specialty else ""
+        )
         + f'<ul class="seo-list">{"".join(_journal_item(item, counts.get(item.id, 0)) for item in journals)}</ul>'
         + _pagination(base, page, total, JOURNALS_PER_PAGE)
     )
@@ -1400,6 +1409,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
             for key, value in formats.items()
         )
         parts.append(f'<table class="seo-facts seo-cite"><tbody>{rows_html}</tbody></table>')
+        parts.append('<p><a href="/iqtibos">Boshqa maqola uchun iqtibos tayyorlash</a></p>')
 
     # Qo'shni maqolalarga havola — 104 809 ta yozuvning aksari sitemap'dan
     # tashqari hech qayerdan bog'lanmagan bo'lardi, ya'ni orfan sahifa.
@@ -1594,9 +1604,11 @@ def _fields_index(db: Session) -> PageMeta:
     for group, entries in rows:
         parts.append(f"<h2>{e(group)}</h2><ul class='seo-list'>")
         for name, journals, articles in entries:
+            code = specialty_map(db)["by_field"].get(name)
             parts.append(
                 f'<li class="seo-item"><a class="seo-item-title" href="{e(field_path(name))}">{e(name)}</a>'
-                f'<p class="seo-item-meta">{journals} ta jurnal · {articles} ta maqola</p></li>'
+                f'<p class="seo-item-meta">{f"OAK shifri {e(code[0])} · " if code else ""}'
+                f'{journals} ta jurnal · {articles} ta maqola</p></li>'
             )
         parts.append("</ul>")
 
@@ -1831,6 +1843,8 @@ def _not_found(path: str) -> PageMeta:
 _ARTICLE_PATH = re.compile(r"^/maqola/(\d+)(?:-[^/]*)?$")
 _JOURNAL_PATH = re.compile(r"^/jurnal/([^/]+)(?:/(\d{4}))?$")
 _FIELD_PATH = re.compile(r"^/soha/([^/]+)$")
+_SPECIALTY_PATH = re.compile(r"^/oak-jurnallar/ixtisoslik/([0-9.]+)$")
+_GUIDE_PATH = re.compile(r"^/yoriqnoma/([a-z0-9-]+)$")
 _CITY_PATH = re.compile(r"^/shahar/([^/]+)$")
 
 
@@ -1840,6 +1854,217 @@ def _page_number(params: dict[str, str]) -> int:
         return max(1, min(int(raw), 5000))
     except ValueError:
         return 1
+
+
+def specialty_map(db: Session) -> dict[str, dict]:
+    """OAK ixtisoslik shifri ↔ soha (`14.00.00` ↔ "Tibbiyot")."""
+    def produce() -> dict[str, dict]:
+        from .oak_registry import AREA_NAMES  # oak_registry → ingest → seo: modul darajasida aylanadi
+
+        by_field: dict[str, tuple[str, str]] = {}
+        by_code: dict[str, str] = {}
+        rows = db.execute(
+            select(OakRegistryEntry.specialty_code, OakRegistryEntry.area)
+            .where(OakRegistryEntry.specialty_code.is_not(None))
+            .distinct()
+        )
+        for code, area in rows:
+            field = AREA_NAMES.get(area or "")
+            if field and code:
+                by_code.setdefault(code, field)
+                by_field.setdefault(field, (code, area))
+        return {"by_field": by_field, "by_code": by_code}
+
+    return _cached("specialty_map", produce)
+
+
+def _guide_html(text: str) -> str:
+    """Qo'llanma matni: "## " / "### " — sarlavha, "- " — ro'yxat, bo'sh qator — abzas.
+
+    HTML qabul qilinmaydi: hamma narsa ekranlanadi, admin xato yoki zararli
+    teg kiritsa ham sahifa buzilmaydi.
+    """
+    out: list[str] = []
+    items: list[str] = []
+    paragraph: list[str] = []
+
+    def flush() -> None:
+        if paragraph:
+            out.append(f"<p>{e(' '.join(paragraph))}</p>")
+            paragraph.clear()
+        if items:
+            out.append("<ul>" + "".join(f"<li>{e(item)}</li>" for item in items) + "</ul>")
+            items.clear()
+
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            flush()
+        elif line.startswith("### "):
+            flush()
+            out.append(f"<h3>{e(line[4:])}</h3>")
+        elif line.startswith("## "):
+            flush()
+            out.append(f"<h2>{e(line[3:])}</h2>")
+        elif line.startswith(("- ", "* ")):
+            if paragraph:
+                out.append(f"<p>{e(' '.join(paragraph))}</p>")
+                paragraph.clear()
+            items.append(line[2:])
+        else:
+            if items:
+                flush()
+            paragraph.append(line)
+    flush()
+    return "".join(out)
+
+
+def _guides_index(db: Session) -> PageMeta:
+    guides = db.scalars(select(Guide).where(Guide.is_published.is_(True)).order_by(Guide.title)).all()
+    crumbs = [("Bosh sahifa", "/"), ("Yo‘riqnoma", "/yoriqnoma")]
+    items = "".join(
+        f'<li class="seo-item"><a class="seo-item-title" href="/yoriqnoma/{e(item.slug)}">{e(item.title)}</a>'
+        + (f'<p class="seo-item-abstract">{e(clip(item.summary, 220))}</p>' if item.summary else "")
+        + "</li>"
+        for item in guides
+    )
+    body = (
+        _crumbs(crumbs)
+        + "<h1>Yo‘riqnoma: maqola nashr qilish bo‘yicha qo‘llanmalar</h1>"
+        + '<p class="seo-lead">OAK jurnaliga maqola tayyorlash, jurnal tanlash va iqtibos keltirish '
+        "bo‘yicha amaliy qo‘llanmalar.</p>"
+        + (f'<ul class="seo-list">{items}</ul>' if items else "<p>Qo‘llanmalar tez orada qo‘shiladi.</p>")
+        + '<p><a href="/iqtibos">Iqtibos generatori</a> · <a href="/sohalar">Sohalar bo‘yicha OAK jurnallari</a></p>'
+    )
+    return PageMeta(
+        title="Yo‘riqnoma — OAK jurnaliga maqola nashr qilish",
+        description="OAK jurnaliga maqola tayyorlash, jurnal tanlash va iqtibos keltirish bo‘yicha amaliy qo‘llanmalar.",
+        path="/yoriqnoma",
+        body=body,
+        # Qo'llanma yo'q bo'lsa sahifa bo'sh qobiq — indeksga taklif qilinmaydi.
+        robots=INDEXABLE if guides else NOINDEX,
+        jsonld=[
+            _breadcrumbs(crumbs),
+            *([_item_list("Qo‘llanmalar", [(item.title, f"/yoriqnoma/{item.slug}") for item in guides])] if guides else []),
+        ],
+    )
+
+
+def _guide_page(db: Session, slug: str) -> PageMeta:
+    guide = db.scalar(select(Guide).where(Guide.slug == slug, Guide.is_published.is_(True)))
+    path = f"/yoriqnoma/{slug}"
+    if guide is None:
+        return _not_found(path)
+    crumbs = [("Bosh sahifa", "/"), ("Yo‘riqnoma", "/yoriqnoma"), (clip(guide.title, 60), path)]
+    updated = guide.updated_at.date().isoformat() if guide.updated_at else None
+    description = clip(guide.summary or re.sub(r"^#+ ", "", guide.body or "", flags=re.M), 158)
+    body = (
+        _crumbs(crumbs)
+        + f"<h1>{e(guide.title)}</h1>"
+        + (f'<p class="seo-lead">{e(guide.summary)}</p>' if guide.summary else "")
+        + (f'<p class="seo-item-meta">Yangilangan: {e(updated)}</p>' if updated else "")
+        + _guide_html(guide.body)
+        + '<p><a href="/yoriqnoma">Barcha qo‘llanmalar</a> · <a href="/iqtibos">Iqtibos generatori</a></p>'
+    )
+    return PageMeta(
+        title=clip(f"{guide.title} — IlmIz yo‘riqnomasi", TITLE_LIMIT),
+        description=description,
+        path=path,
+        body=body,
+        og_type="article",
+        modified_time=guide.updated_at.isoformat() if guide.updated_at else None,
+        jsonld=[
+            {
+                "@type": "Article",
+                "headline": clip(guide.title, 110),
+                "description": description,
+                "url": absolute(path),
+                "inLanguage": DEFAULT_LANG,
+                **({"dateModified": updated} if updated else {}),
+                **({"datePublished": guide.created_at.date().isoformat()} if guide.created_at else {}),
+                "publisher": {"@id": absolute("/#organization")},
+                "isPartOf": {"@id": absolute("/#website")},
+            },
+            _breadcrumbs(crumbs),
+        ],
+    )
+
+
+def _citation_example(db: Session) -> Article | None:
+    """Sahifadagi namuna — bazadagi haqiqiy, to'liq ma'lumotli maqola."""
+    return db.scalar(
+        select(Article)
+        .options(selectinload(Article.journal))
+        .where(
+            article_quality.indexable_clause(),
+            Article.doi.is_not(None),
+            Article.volume.is_not(None),
+            Article.pages.is_not(None),
+            func.json_array_length(Article.authors).between(1, 3),
+        )
+        .order_by(Article.id.desc())
+        .limit(1)
+    )
+
+
+def _citation_page(db: Session) -> PageMeta:
+    crumbs = [("Bosh sahifa", "/"), ("Iqtibos generatori", "/iqtibos")]
+    example = _citation_example(db)
+    parts = [
+        _crumbs(crumbs),
+        "<h1>Iqtibos generatori: GOST, APA, MLA, Chicago</h1>",
+        '<p class="seo-lead">Maqolaning DOI raqamini kiriting, IlmIz bazasidan qidiring yoki ma’lumotlarni '
+        "qo‘lda yozing — tayyor bibliografik yozuvni dissertatsiya yoki maqolangizga nusxalang.</p>",
+        "<h2>Qanday ishlaydi</h2>",
+        "<ul><li>DOI bo‘yicha: ma’lumot IlmIz bazasidan, bo‘lmasa Crossref ochiq reestridan olinadi.</li>"
+        "<li>Bazadan qidirish: OAK jurnallaridagi maqolalar sarlavha yoki muallif bo‘yicha topiladi.</li>"
+        "<li>Qo‘lda: mualliflar, sarlavha, jurnal, yil, jild, son va betlarni kiriting.</li></ul>",
+        "<h2>GOST yozuvining tuzilishi</h2>",
+        "<p>O‘zbekiston OAK dissertatsiyalarida ko‘pincha GOST R 7.0.5 uslubi qo‘llanadi. Generator "
+        "elementlarni shu tartibda yozadi: mualliflar (to‘rt va undan ortiq bo‘lsa — birinchisi va «va b.»), "
+        "sarlavha, «//» belgisidan keyin jurnal nomi, yil, jild («T.»), son («№»), betlar (o‘zbekcha "
+        "maqolada «B.», ruscha maqolada «С.») va DOI. Har bir element « – » bilan ajratiladi.</p>",
+        "<h2>Boshqa formatlar</h2>",
+        "<ul><li><strong>APA</strong> — mualliflar, yil qavs ichida, sarlavha, jurnal, jild(son), betlar, DOI.</li>"
+        "<li><strong>MLA</strong> — mualliflar, sarlavha qo‘shtirnoqda, jurnal, jild va betlar, yil.</li>"
+        "<li><strong>Chicago</strong> — MLA ga o‘xshash, yil jild va betlardan keyin qavs ichida.</li></ul>",
+        "<p>Har qanday holatda jurnal yoki dissertatsiya kengashining o‘z talablarini tekshiring — "
+        "ba’zilari formatdan farq qiladi.</p>",
+    ]
+    if example is not None:
+        formats = citation_formats(example)
+        parts.append("<h2>Namuna</h2>")
+        parts.append(
+            f'<p>Maqola: <a href="{e(article_path(example.id, example.title))}">{e(display_title(example.title))}</a></p>'
+        )
+        rows_html = "".join(
+            f"<tr><th>{label}</th><td><pre>{e(formats[key])}</pre></td></tr>"
+            for key, label in (("gost", "GOST"), ("apa", "APA"), ("mla", "MLA"), ("chicago", "Chicago"))
+        )
+        parts.append(f'<table class="seo-facts seo-cite"><tbody>{rows_html}</tbody></table>')
+    parts.append('<p><a href="/yoriqnoma">Yo‘riqnoma: maqola nashr qilish bo‘yicha qo‘llanmalar</a></p>')
+    return PageMeta(
+        title="Iqtibos generatori — GOST, APA, MLA, Chicago",
+        description=(
+            "Maqola uchun bibliografik yozuvni GOST (OAK), APA, MLA va Chicago formatida bir zumda tayyorlang: "
+            "DOI, IlmIz bazasi yoki qo‘lda kiritish orqali."
+        ),
+        path="/iqtibos",
+        body="".join(parts),
+        jsonld=[
+            {
+                "@type": "WebApplication",
+                "name": "IlmIz iqtibos generatori",
+                "url": absolute("/iqtibos"),
+                "applicationCategory": "ReferenceApplication",
+                "operatingSystem": "Any",
+                "inLanguage": DEFAULT_LANG,
+                "offers": {"@type": "Offer", "price": "0", "priceCurrency": "UZS"},
+                "isPartOf": {"@id": absolute("/#website")},
+            },
+            _breadcrumbs(crumbs),
+        ],
+    )
 
 
 # Bu parametrlar sahifa mazmunini o'zgartirmaydi (sahifa raqami alohida
@@ -1894,6 +2119,27 @@ def _route(db: Session, path: str, params: dict[str, str]) -> PageMeta:
         return _terms_page()
     if path == "/qidiruv":
         return _search_page(db, params.get("q", ""))
+    if path == "/iqtibos":
+        return _citation_page(db)
+    if path == "/yoriqnoma":
+        return _guides_index(db)
+    if path == "/oak-jurnallar":
+        return PageMeta(title="", description="", path="/sohalar", status=301, redirect="/sohalar")
+
+    match = _SPECIALTY_PATH.match(path)
+    if match:
+        # OAK reestrida faqat umumiy shifrlar bor (14.00.00 — Tibbiyot fanlari),
+        # ular soha sahifalariga bir-birga mos keladi. Alohida sahifa takroriy
+        # kontent bo'lardi — shifr bo'yicha qidirgan odam soha sahifasiga o'tadi.
+        field = specialty_map(db)["by_code"].get(match.group(1))
+        if field:
+            target = field_path(field)
+            return PageMeta(title="", description="", path=target, status=301, redirect=target)
+        return _not_found(path)
+
+    match = _GUIDE_PATH.match(path)
+    if match:
+        return _guide_page(db, match.group(1))
 
     match = _ARTICLE_PATH.match(path)
     if match:

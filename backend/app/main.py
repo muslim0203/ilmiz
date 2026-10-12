@@ -20,6 +20,7 @@ from .models import (
     Article,
     User,
     AuditJob,
+    Guide,
     HarvestRun,
     HarvestSource,
     Journal,
@@ -33,7 +34,9 @@ from .seed import seed_database
 from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stats
 from .services import auth as auth_service
 from .services import authorship
+from .services import citation_tool
 from .services import feed
+from .services import guides as guide_service
 from .services import field_classify
 from .services import journal_edit
 from .services import journal_search
@@ -721,6 +724,44 @@ def list_articles(
     return [article_payload(article) for article in articles]
 
 
+class CitationInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    title: str = Field(max_length=1000)
+    journal: str = Field(max_length=500)
+    authors: list[str] = Field(default_factory=list, max_length=30)
+    year: int | None = Field(default=None, ge=1500, le=2100)
+    volume: str | None = Field(default=None, max_length=40)
+    issue: str | None = Field(default=None, max_length=40)
+    pages: str | None = Field(default=None, max_length=40)
+    doi: str | None = Field(default=None, max_length=300)
+    url: str | None = Field(default=None, max_length=1000)
+    language: str | None = Field(default=None, max_length=30)
+
+
+@app.post("/api/citations/format")
+def format_citation(payload: CitationInput) -> dict[str, object]:
+    """`/iqtibos`: qo'lda kiritilgan maqola uchun GOST, APA, MLA, Chicago."""
+    try:
+        return {"formats": citation_tool.format_fields(payload.model_dump())}
+    except citation_tool.CitationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/citations/doi")
+def citation_by_doi(
+    response: Response, doi: str = Query(max_length=320), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """DOI bo'yicha iqtibos: IlmIz bazasi, bo'lmasa Crossref."""
+    try:
+        found = citation_tool.lookup_doi(db, doi)
+    except citation_tool.CitationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if found is None:
+        raise HTTPException(status_code=404, detail="Bu DOI bo‘yicha maqola topilmadi")
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return found
+
+
 @app.get("/api/updates")
 def recent_updates(
     response: Response,
@@ -1037,6 +1078,56 @@ class JournalEditInput(BaseModel):
     deadlines: str | None = Field(default=None, max_length=2000)
     fees: str | None = Field(default=None, max_length=2000)
     indexing: list[str] | None = Field(default=None, max_length=20)
+
+
+class GuideInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    slug: str = Field(max_length=120)
+    title: str = Field(max_length=300)
+    summary: str | None = Field(default=None, max_length=600)
+    body: str = Field(default="", max_length=60_000)
+    isPublished: bool = False
+
+
+def _guide_or_404(guide_id: int, db: Session) -> Guide:
+    guide = db.get(Guide, guide_id)
+    if guide is None:
+        raise HTTPException(status_code=404, detail="Qo‘llanma topilmadi")
+    return guide
+
+
+@admin.get("/guides")
+def admin_guides(db: Session = Depends(get_db)) -> dict[str, object]:
+    return {"guides": [guide_service.payload(item) for item in db.scalars(select(Guide).order_by(Guide.title))]}
+
+
+@admin.post("/guides")
+def admin_create_guide(payload: GuideInput, db: Session = Depends(get_db)) -> dict[str, object]:
+    try:
+        guide = guide_service.save(db, payload.model_dump())
+    except guide_service.GuideError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    seo.invalidate()
+    return guide_service.payload(guide)
+
+
+@admin.put("/guides/{guide_id}")
+def admin_update_guide(guide_id: int, payload: GuideInput, db: Session = Depends(get_db)) -> dict[str, object]:
+    guide = _guide_or_404(guide_id, db)
+    try:
+        guide = guide_service.save(db, payload.model_dump(), guide)
+    except guide_service.GuideError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    seo.invalidate()
+    return guide_service.payload(guide)
+
+
+@admin.delete("/guides/{guide_id}")
+def admin_delete_guide(guide_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
+    db.delete(_guide_or_404(guide_id, db))
+    db.commit()
+    seo.invalidate()
+    return {"deleted": guide_id}
 
 
 @admin.get("/journals/site-check")

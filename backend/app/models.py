@@ -571,3 +571,23 @@ class OAuthState(Base):
     # bo'lishi shart. Oddiy kirishda bo'sh.
     link_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Guide(Base):
+    """`/yoriqnoma/{slug}` — tahririyat admin paneldan yozadigan qo'llanma.
+
+    Matn qo'lda yoziladi: OAK talablari kabi mavzuda xato ma'lumot zararli,
+    avtomatik yaratilgan matn esa qidiruv tizimlarida jazolanadi.
+    """
+
+    __tablename__ = "guides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Oddiy belgilash: bo'sh qator — abzas, "## " — sarlavha, "- " — ro'yxat.
+    body: Mapped[str] = mapped_column(Text, default="")
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

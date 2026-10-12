@@ -24,6 +24,9 @@ export type Route =
   | { kind: "privacy" }
   | { kind: "terms" }
   | { kind: "search"; query: string }
+  | { kind: "citation" }
+  | { kind: "guides" }
+  | { kind: "guide"; slug: string }
   | { kind: "notFound"; path: string };
 
 const ARTICLE = /^\/maqola\/(\d+)(?:-[^/]*)?$/;
@@ -50,6 +53,10 @@ export function parseRoute(pathname: string, search: string): Route {
   if (path === "/maxfiylik") return { kind: "privacy" };
   if (path === "/shartlar") return { kind: "terms" };
   if (path === "/qidiruv") return { kind: "search", query: params.get("q") ?? "" };
+  if (path === "/iqtibos") return { kind: "citation" };
+  if (path === "/yoriqnoma") return { kind: "guides" };
+  const guide = /^\/yoriqnoma\/([a-z0-9-]+)$/.exec(path);
+  if (guide) return { kind: "guide", slug: guide[1] };
 
   const article = ARTICLE.exec(path);
   if (article) return { kind: "article", id: article[1] };

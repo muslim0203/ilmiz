@@ -68,7 +68,8 @@ def citation_formats(article: Article) -> dict[str, str]:
     url = _url(article)
     url_suffix = f" {url}" if url else ""
     authors_amp = _authors(article)
-    authors_and = _authors(article, conjunction="and")
+    # "Aliyeva B." dan keyin formatning o'z nuqtasi qo'shilganda "B.." chiqardi.
+    authors_and = _authors(article, conjunction="and").rstrip(".")
     key_author = re.sub(r"[^a-z0-9]+", "", (article.authors[0] if article.authors else "article").casefold()) or "article"
     bib_key = f"{key_author}{article.publication_year or 'nd'}"
     bib_fields = [

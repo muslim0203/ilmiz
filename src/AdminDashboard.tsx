@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BarChart3,
+  BookOpenText,
   Bot,
   CheckCircle2,
   Clock3,
@@ -37,6 +38,7 @@ import {
 import { ModeToggle } from "@/components/mode-toggle";
 import ArticleFieldEditor from "@/ArticleFieldEditor";
 import JournalEditor from "@/JournalEditor";
+import GuideEditor from "@/GuideEditor";
 import SiteCheck from "@/SiteCheck";
 import {
   AdminAuthError,
@@ -454,6 +456,20 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpenText className="size-4" /> Yo‘riqnoma
+            </CardTitle>
+            <CardDescription>
+              /yoriqnoma qo‘llanmalari. Matnni tahririyat yozadi — tekshirilgan, amaliy ma’lumot.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <GuideEditor />
           </CardContent>
         </Card>
 
