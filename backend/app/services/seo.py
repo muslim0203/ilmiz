@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..models import Article, Journal, OakRegistryEntry
+from .article_text import clean_markup, display_title, paragraphs
 from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
 from .translit import alternate_names
@@ -329,9 +330,9 @@ def _article_item(article: Article) -> str:
     )
     return (
         '<li class="seo-item">'
-        f'<a class="seo-item-title" href="{e(article_path(article.id, article.title))}">{e(article.title)}</a>'
+        f'<a class="seo-item-title" href="{e(article_path(article.id, article.title))}">{e(display_title(article.title))}</a>'
         f'<p class="seo-item-meta">{meta}</p>'
-        + (f'<p class="seo-item-abstract">{e(clip(article.abstract, 220))}</p>' if article.abstract else "")
+        + (f'<p class="seo-item-abstract">{e(clip(clean_markup(article.abstract), 220))}</p>' if article.abstract else "")
         + "</li>"
     )
 
@@ -1226,6 +1227,28 @@ def _article_list(db: Session, page: int, *, recent: bool = False) -> PageMeta:
     )
 
 
+# Google qidiruv natijasida ~60 belgigacha ko'rsatadi; uzunrog'i kesiladi va
+# sarlavhaning oxiri (ko'pincha jurnal nomi) yo'qoladi.
+TITLE_LIMIT = 60
+
+
+def article_title_tag(title: str, journal_name: str | None, year: int | None) -> str:
+    """Maqola `<title>`i: sig'sa jurnal va yil bilan, sig'masa faqat sarlavha.
+
+    Sarlavhaning o'zi qidiruv so'rovi — u kesilmaydi, birinchi navbatda
+    qo'shimcha (jurnal, yil) tushib qoladi.
+    """
+    candidates = [title]
+    if journal_name:
+        candidates.insert(0, f"{title} — {journal_name}")
+        if year:
+            candidates.insert(0, f"{title} — {journal_name}, {year}")
+    for candidate in candidates:
+        if len(candidate) <= TITLE_LIMIT:
+            return candidate
+    return clip(title, TITLE_LIMIT - 1)
+
+
 def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta:
     article = db.scalar(
         select(Article).where(Article.id == article_id).options(selectinload(Article.journal))
@@ -1244,13 +1267,13 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     when = publication_date(article.publication_date, article.publication_year)
     year = article.publication_year
     lang = language_code(article.language)
-    abstract = (article.abstract or "").strip()
+    # Bazada tozalanmagan yozuv qolgan bo'lsa ham sahifada HTML ko'rinmasin.
+    abstract = clean_markup(article.abstract) or ""
     keywords = article.keywords or []
-
-    # Sarlavha to'liq (so'rov aynan shu), keyin jurnal va yil — sayt nomi emas:
-    # brend `og:site_name` da, <title> dagi har belgi esa relevantlik.
-    journal_tail = f" — {journal.name}" + (f", {year}" if year else "") if journal else ""
-    title = (article.title if len(article.title) <= 120 else clip(article.title, 120)) + journal_tail
+    # BOSH HARFLI sarlavha faqat ko'rinishda gap registriga o'tadi; bazadagi
+    # asl sarlavha (va undan yasalgan slug) o'zgarmaydi.
+    shown_title = display_title(article.title)
+    title = article_title_tag(shown_title, journal.name if journal else None, year)
     if not abstract:
         bits = [", ".join(authors[:4]) + (" va b." if len(authors) > 4 else "")] if authors else []
         if journal:
@@ -1269,7 +1292,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         crumbs.append((clip(journal.name, 50), journal_path(journal.slug)))
         if year:
             crumbs.append((f"{year}", journal_year_path(journal.slug, year)))
-    crumbs.append((clip(article.title, 60), canonical_path))
+    crumbs.append((clip(shown_title, 60), canonical_path))
 
     facts = [
         ("Mualliflar", ", ".join(authors)),
@@ -1300,7 +1323,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
 
     parts = [
         _crumbs(crumbs),
-        f"<h1>{e(article.title)}</h1>",
+        f"<h1>{e(shown_title)}</h1>",
     ]
     if authors:
         parts.append(f'<p class="seo-authors">{e(", ".join(authors))}</p>')
@@ -1311,7 +1334,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         parts.append(f'<p class="seo-item-meta">{journal_line}</p>')
     if abstract:
         parts.append("<h2>Annotatsiya</h2>")
-        parts.append(f"<p>{e(abstract)}</p>")
+        parts.append("".join(f"<p>{e(block)}</p>" for block in paragraphs(abstract)))
     parts.append(f'<table class="seo-facts"><caption>Maqola ma’lumotlari</caption><tbody>{facts_html}</tbody></table>')
     if links:
         parts.append(f'<p class="seo-links">{" · ".join(links)}</p>')
@@ -1394,8 +1417,8 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         "@type": "ScholarlyArticle",
         "@id": absolute(canonical_path) + "#article",
         "url": absolute(canonical_path),
-        "headline": clip(article.title, 110),
-        "name": article.title,
+        "headline": clip(shown_title, 110),
+        "name": shown_title,
         "inLanguage": lang,
         "isAccessibleForFree": True,
         "mainEntityOfPage": absolute(canonical_path),

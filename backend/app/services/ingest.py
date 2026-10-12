@@ -16,6 +16,8 @@ from harvester import oai_harvester
 from harvester.oai_harvester import OAIError, OAIRecord, harvest, identify, list_metadata_formats, metadata_from_xml
 
 from . import netguard, seo
+from .article_text import clean_markup, clean_title
+from .field_classify import classify as classify_fields
 from .search_text import article_search_text
 
 # Harvester har so‘rov va redirect'da manzilni tekshirsin (SSRF).
@@ -319,7 +321,9 @@ def _upsert_record(db: Session, source: HarvestSource, record: OAIRecord, cache:
             source_record.article.updated_at = now
         return "deleted"
 
-    title = _first(record.metadata, "title")
+    # OJS sarlavha va annotatsiyani HTML bilan beradi (`<em>`, `&nbsp;`) —
+    # bazaga toza matn yoziladi.
+    title = clean_title(_first(record.metadata, "title"))
     if not title:
         return "skipped"
     doi = _doi(record.metadata)
@@ -363,10 +367,13 @@ def _upsert_record(db: Session, source: HarvestSource, record: OAIRecord, cache:
     article.title = title
     article.normalized_title = normalize_title(title)
     article.authors = record.metadata.get("creator", [])
-    article.abstract = _first(record.metadata, "description")
+    article.abstract = clean_markup(_first(record.metadata, "description"))
     article.keywords = record.metadata.get("subject", [])
     article.language = _language(record.metadata)
-    article.fields = source.journal.fields
+    # Soha jurnaldan ko'chirilmaydi: besh sohali jurnalning har maqolasi besh
+    # sohali bo'lib chiqardi. Admin qo'lda qo'ygan soha ustidan yozilmaydi.
+    if not article.fields_manual:
+        article.fields = classify_fields(article.title, article.keywords, article.abstract, source.journal.fields)
     article.publication_date = _publication_date(record.metadata)
     article.publication_year = publication_year
     article.volume = volume or article.volume

@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import tempfile
 import unittest
@@ -74,6 +75,53 @@ class IngestBatchTest(unittest.TestCase):
 
         rows = self.db.query(SourceRecord).filter(SourceRecord.source_id == self.source.id).all()
         self.assertEqual(len(rows), 1)
+
+    def _multi_field_source(self) -> HarvestSource:
+        journal = Journal(
+            slug=f"multi-{id(self)}",
+            name="Ko'p sohali jurnal",
+            short_name="MULTI",
+            publisher="Nashriyot",
+            city="Toshkent",
+            fields=["Biologiya", "Filologiya", "Kimyo", "Pedagogika", "Tarix"],
+        )
+        source = HarvestSource(journal=journal, base_url=f"https://multi.test/{id(self)}/oai")
+        self.db.add(source)
+        self.db.commit()
+        return source
+
+    def test_html_is_cleaned_and_field_comes_from_the_article(self) -> None:
+        """Annotatsiyadagi `<p>`/`&nbsp;` tozalanadi; soha jurnaldan ko'chirilmaydi."""
+        source = self._multi_field_source()
+        record = OAIRecord(
+            identifier="oai:multi:1",
+            datestamp="2025-03-01T00:00:00Z",
+            set_specs=[],
+            deleted=False,
+            metadata={
+                "title": ["O‘zbek tilshunosligida <em>frazeologik</em> birliklar"],
+                "description": ["<p>Maqolada&nbsp;frazeologizmlarning semantik tahlili berilgan.</p>"],
+                "subject": ["lingvistika", "semantika"],
+                "date": ["2025-03-01"],
+            },
+            raw_xml="<record/>",
+            metadata_hash="hash-multi-1",
+        )
+        _upsert_record(self.db, source, record, _BatchCache())
+        self.db.commit()
+        article = self.db.query(Article).filter(Article.journal_id == source.journal_id).one()
+        self.assertEqual(article.title, "O‘zbek tilshunosligida frazeologik birliklar")
+        self.assertEqual(article.abstract, "Maqolada frazeologizmlarning semantik tahlili berilgan.")
+        self.assertEqual(article.fields, ["Filologiya"])
+
+        # Admin qo'ygan soha qayta harvestda saqlanadi.
+        article.fields, article.fields_manual = ["Pedagogika"], True
+        self.db.commit()
+        changed = dataclasses.replace(record, metadata_hash="hash-multi-1b")
+        _upsert_record(self.db, source, changed, _BatchCache())
+        self.db.commit()
+        self.db.refresh(article)
+        self.assertEqual(article.fields, ["Pedagogika"])
 
     def test_duplicate_doi_in_one_batch(self) -> None:
         """Bir batchda takrorlangan DOI articles.doi unique constraintini buzmasin."""

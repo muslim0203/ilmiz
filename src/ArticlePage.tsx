@@ -171,7 +171,11 @@ export default function ArticlePage({ id }: { id: string }) {
           </div>
 
           <h2 className="mt-8 text-lg font-semibold tracking-tight">Annotatsiya</h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">{article.abstract}</p>
+          <div className="mt-2 space-y-3 text-[15px] leading-relaxed text-muted-foreground">
+            {article.abstract.split("\n\n").map((block, index) => (
+              <p key={index}>{block}</p>
+            ))}
+          </div>
 
           {article.keywords.length > 0 && (
             <>

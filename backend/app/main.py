@@ -34,6 +34,7 @@ from .services.audit_queue import enqueue_audits, process_audit_jobs, queue_stat
 from .services import auth as auth_service
 from .services import authorship
 from .services import feed
+from .services import field_classify
 from .services import journal_edit
 from .services import journal_search
 from .services import ror as ror_service
@@ -1135,6 +1136,87 @@ def admin_edit_journal(
         **journal_edit.editable_payload(db, journal),
         "contacts": journal_edit.contacts_payload(journal),
     }
+
+
+class ArticleFieldsInput(BaseModel):
+    """`fields: null` — qo'lda qo'yilgan sohani bekor qilib, avtomatik tasnifga qaytarish."""
+
+    model_config = {"extra": "forbid"}
+    fields: list[str] | None = Field(default=None, max_length=5)
+
+
+def _article_or_404(article_id: int, db: Session) -> Article:
+    article = db.scalar(select(Article).where(Article.id == article_id).options(selectinload(Article.journal)))
+    if article is None or article.is_deleted:
+        raise HTTPException(status_code=404, detail="Maqola topilmadi")
+    return article
+
+
+def _admin_article(article: Article) -> dict[str, object]:
+    return {
+        "id": article.id,
+        "title": article.title,
+        "journalName": article.journal.name if article.journal else None,
+        "journalSlug": article.journal.slug if article.journal else None,
+        "journalFields": list(article.journal.fields or []) if article.journal else [],
+        "fields": list(article.fields or []),
+        "fieldsManual": bool(article.fields_manual),
+        "keywords": list(article.keywords or [])[:12],
+    }
+
+
+@admin.get("/articles/unclassified")
+def admin_unclassified_articles(
+    journal: str | None = Query(default=None, max_length=180),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Sohasi aniqlanmagan maqolalar — admin ularni birma-bir ko'rib chiqadi."""
+    statement = (
+        select(Article)
+        .options(selectinload(Article.journal))
+        .where(Article.is_deleted.is_(False), func.json_array_length(Article.fields) == 0)
+    )
+    if journal:
+        statement = statement.join(Article.journal).where(Journal.slug == journal)
+    total = _total_of(db, statement)
+    items = db.scalars(statement.order_by(Article.id.desc()).offset(offset).limit(limit)).all()
+    return {"total": total, "articles": [_admin_article(item) for item in items], "allFields": seo.all_fields()}
+
+
+@admin.get("/articles/{article_id}")
+def admin_article(article_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
+    return {**_admin_article(_article_or_404(article_id, db)), "allFields": seo.all_fields()}
+
+
+@admin.put("/articles/{article_id}/fields")
+def admin_edit_article_fields(
+    article_id: int, payload: ArticleFieldsInput, db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Maqola sohasini qo'lda qo'yadi; harvest va qayta tasniflash unga tegmaydi.
+
+    Avtomatik tasnif ko'p sohali jurnalda aniq g'olib topmasa sohani bo'sh
+    qoldiradi — ular shu yerdan to'ldiriladi.
+    """
+    article = _article_or_404(article_id, db)
+    if payload.fields is None:
+        article.fields_manual = False
+        article.fields = field_classify.classify(
+            article.title, article.keywords, article.abstract, article.journal.fields if article.journal else []
+        )
+    else:
+        known = set(seo.all_fields())
+        chosen = list(dict.fromkeys(name.strip() for name in payload.fields if name.strip()))
+        unknown = [name for name in chosen if name not in known]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Noma’lum soha: {', '.join(unknown)}")
+        article.fields = chosen
+        article.fields_manual = True
+    article.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    seo.invalidate()
+    return {**_admin_article(article), "allFields": seo.all_fields()}
 
 
 @admin.post("/profiles/collect")

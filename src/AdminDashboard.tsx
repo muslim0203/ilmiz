@@ -34,6 +34,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ModeToggle } from "@/components/mode-toggle";
+import ArticleFieldEditor from "@/ArticleFieldEditor";
 import JournalEditor from "@/JournalEditor";
 import {
   AdminAuthError,
@@ -430,6 +431,21 @@ export default function AdminDashboard({ onClose }: { onClose: () => void }) {
           </CardHeader>
           <CardContent>
             <JournalEditor />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PencilLine className="size-4" /> Maqola sohasi
+            </CardTitle>
+            <CardDescription>
+              Ko‘p sohali jurnallarda soha maqolaning o‘zidan aniqlanadi; aniqlanmaganlari shu
+              yerda. Qo‘lda qo‘yilgan sohaga harvest tegmaydi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ArticleFieldEditor />
           </CardContent>
         </Card>
 

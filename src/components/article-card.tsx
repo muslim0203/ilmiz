@@ -79,7 +79,7 @@ export function ArticleCard({ article, journal }: { article: Article; journal: J
         <p
           className={cn(
             "text-sm leading-relaxed text-muted-foreground",
-            !open && "line-clamp-2",
+            open ? "whitespace-pre-line" : "line-clamp-2",
           )}
         >
           {article.abstract}

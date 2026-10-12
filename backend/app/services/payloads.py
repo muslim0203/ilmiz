@@ -10,13 +10,15 @@ barobar ko'p sahifaga yetadi.
 from __future__ import annotations
 
 from ..models import Article
+from .article_text import clean_markup, display_title
 from .citations import citation_formats
 
 
 def article_payload(article: Article) -> dict[str, object]:
     return {
         "id": str(article.id),
-        "title": article.title,
+        # Ko'rsatish uchun: BOSH HARFLI sarlavha gap registrida, bazadagisi o'zgarmaydi.
+        "title": display_title(article.title),
         "authors": article.authors,
         "journalId": article.journal.slug,
         "journalName": article.journal.name,
@@ -27,7 +29,7 @@ def article_payload(article: Article) -> dict[str, object]:
         "pages": article.pages or "—",
         "language": article.language or "Noma’lum",
         "fields": article.fields,
-        "abstract": article.abstract or "Annotatsiya taqdim etilmagan.",
+        "abstract": clean_markup(article.abstract) or "Annotatsiya taqdim etilmagan.",
         "keywords": article.keywords,
         "doi": article.doi,
         "hasPdf": bool(article.pdf_url),

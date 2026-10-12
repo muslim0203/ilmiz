@@ -224,6 +224,9 @@ class Article(Base):
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
     language: Mapped[str | None] = mapped_column(String(30), nullable=True)
     fields: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Soha admin tomonidan qo'lda qo'yilgan — harvest va qayta tasniflash
+    # (`field_classify`) uni ustidan yozmaydi.
+    fields_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     publication_date: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     publication_year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     volume: Mapped[str | None] = mapped_column(String(80), nullable=True)

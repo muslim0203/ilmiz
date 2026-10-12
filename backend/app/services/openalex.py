@@ -195,6 +195,8 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
     from sqlalchemy import select
 
     from ..models import Article, SourceRecord
+    from .article_text import clean_markup, clean_title
+    from .field_classify import classify as classify_fields
     from .search_text import article_search_text, normalize
 
     # Ikkala ISSN ham sinaladi. Bosma ISSN ko'pincha OpenAlex'da yo'q:
@@ -233,14 +235,16 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
         stats["yangi"] += 1
         if dry_run:
             continue
+        title = clean_title(record["title"])
+        abstract = clean_markup(record["abstract"])
         article = Article(
             journal_id=journal.id,
-            title=record["title"],
-            normalized_title=normalize(record["title"]),
+            title=title,
+            normalized_title=normalize(title),
             authors=record["authors"],
-            abstract=record["abstract"],
+            abstract=abstract,
             keywords=[],
-            fields=[],
+            fields=classify_fields(title, [], abstract, journal.fields),
             language=record["language"],
             publication_date=record["publication_date"],
             publication_year=record["publication_year"],
@@ -250,9 +254,7 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
             doi=record["doi"],
             landing_url=record["landing_url"],
             pdf_url=record["pdf_url"],
-            search_text=article_search_text(
-                record["title"], record["abstract"], record["authors"]
-            ),
+            search_text=article_search_text(title, abstract, record["authors"]),
             harvested_at=now,
         )
         db.add(article)

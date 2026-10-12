@@ -215,3 +215,35 @@ export function saveContacts(slug: string, contacts: JournalContact[]) {
     },
   );
 }
+
+export type AdminArticle = {
+  id: number;
+  title: string;
+  journalName: string | null;
+  journalSlug: string | null;
+  journalFields: string[];
+  fields: string[];
+  /** Admin qo'ygan — harvest va qayta tasniflash tegmaydi. */
+  fieldsManual: boolean;
+  keywords: string[];
+};
+
+export function loadUnclassifiedArticles(offset = 0, journal?: string) {
+  const params = new URLSearchParams({ limit: "20", offset: String(offset) });
+  if (journal) params.set("journal", journal);
+  return request<{ total: number; articles: AdminArticle[]; allFields: string[] }>(
+    `/api/admin/articles/unclassified?${params.toString()}`,
+  );
+}
+
+export function loadArticleForEdit(id: number) {
+  return request<AdminArticle & { allFields: string[] }>(`/api/admin/articles/${id}`);
+}
+
+/** `fields: null` — qo'lda qo'yilganini bekor qilib, avtomatik tasnifga qaytaradi. */
+export function saveArticleFields(id: number, fields: string[] | null) {
+  return request<AdminArticle & { allFields: string[] }>(`/api/admin/articles/${id}/fields`, {
+    method: "PUT",
+    body: JSON.stringify({ fields }),
+  });
+}
