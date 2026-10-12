@@ -73,11 +73,19 @@ def robots() -> PlainTextResponse:
         # dublikat bo'lib qolmasligi kerak.
         return PlainTextResponse("User-agent: *\nDisallow: /\n", media_type="text/plain")
 
+    # `/qidiruv` — cheksiz URL makoni (har so'rov alohida manzil), sahifalari
+    # baribir `noindex`. Ilgari JSON-LD `SearchAction` uchun ochiq turardi,
+    # lekin Google sitelinks qidiruv oynasini 2024-yil noyabrida to'xtatgan.
+    # `/api/citations/` — Crossref'ga so'rov yuboradigan vosita API'si.
+    # Sahifalash va `/api/` ning qolgani ochiq: `noindex` ko'rinishi va
+    # React sahifalarini render qilish uchun kerak.
     lines = [
         "User-agent: *",
         "Allow: /",
         "Disallow: /api/admin/",
         "Disallow: /api/auth/",
+        "Disallow: /api/citations/",
+        "Disallow: /qidiruv",
         "",
         # Yandex UTM va boshqa kuzatuv parametrlarini alohida URL deb
         # hisoblamasin — aks holda bitta maqola o'nlab dublikatga bo'linadi.
@@ -85,6 +93,8 @@ def robots() -> PlainTextResponse:
         "Allow: /",
         "Disallow: /api/admin/",
         "Disallow: /api/auth/",
+        "Disallow: /api/citations/",
+        "Disallow: /qidiruv",
         "Clean-param: utm_source&utm_medium&utm_campaign&utm_term&utm_content&ref&from",
         f"Host: {base.split('//', 1)[-1]}",
         "",
@@ -92,6 +102,8 @@ def robots() -> PlainTextResponse:
         "Allow: /",
         "Disallow: /api/admin/",
         "Disallow: /api/auth/",
+        "Disallow: /api/citations/",
+        "Disallow: /qidiruv",
         "",
         f"Sitemap: {base}/sitemap.xml",
         "",

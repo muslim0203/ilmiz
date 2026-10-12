@@ -173,7 +173,11 @@ class SeoRegressionTests(unittest.TestCase):
         body = self.client.get("/robots.txt").text
         self.assertNotIn("Disallow: /api/\n", body)
         self.assertIn("Disallow: /api/admin/", body)
-        self.assertNotIn("Disallow: /qidiruv", body)
+        # Ichki qidiruv natijalari yopiq (cheksiz URL makoni); sahifalash ochiq —
+        # aks holda Google `noindex` ni ko'rmay, havolalarni kuzatmay qo'yadi.
+        self.assertIn("Disallow: /qidiruv", body)
+        self.assertIn("Disallow: /api/citations/", body)
+        self.assertNotIn("sahifa", body)
 
     def test_malformed_and_credential_urls_are_not_emitted(self):
         for value in ("http://", "https://user:secret@example.com/a", "https://a.test/has space"):
