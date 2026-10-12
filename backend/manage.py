@@ -64,6 +64,7 @@ from backend.app.services.ingest import (
 )
 from backend.app.services import indexnow
 from backend.app.services.article_cleanup import STEPS as CLEAN_STEPS, clean_articles
+from backend.app.services.article_dedupe import dedupe_articles
 from backend.app.services.oak_registry import import_registry
 from backend.app.services.profile_collector import collect_profile
 from backend.app.services.auth import account_summary, grant_admin, merge_users
@@ -216,6 +217,11 @@ def main() -> int:
         "--steps", default=",".join(CLEAN_STEPS), help=f"Vergul bilan: {', '.join(CLEAN_STEPS)}"
     )
     clean_cmd.add_argument("--report-dir", type=Path, help="CSV hisobotlar katalogi")
+    dedupe_cmd = subparsers.add_parser(
+        "dedupe-articles", help="Takror maqolalarni (jurnal + sarlavha + yil) kanonik nusxaga birlashtirish"
+    )
+    dedupe_cmd.add_argument("--apply", action="store_true", help="Standart holatda faqat quruq yurish")
+    dedupe_cmd.add_argument("--report-dir", type=Path, help="CSV hisobotlar katalogi")
     index_now = subparsers.add_parser(
         "indexnow", help="O‘zgargan URL'larni Yandex/Bing'ga bildirish (IndexNow)"
     )
@@ -416,6 +422,10 @@ def main() -> int:
                 }, ensure_ascii=False, indent=2))
                 return 0
             print(json.dumps(indexnow.submit(urls), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "dedupe-articles":
+            result = dedupe_articles(db, dry_run=not args.apply, report_dir=args.report_dir)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         if args.command == "clean-articles":
             steps = tuple(step.strip() for step in args.steps.split(",") if step.strip())

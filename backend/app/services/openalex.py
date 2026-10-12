@@ -197,7 +197,8 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
     from ..models import Article, SourceRecord
     from .article_text import clean_markup, clean_title
     from .field_classify import classify as classify_fields
-    from .search_text import article_search_text, normalize
+    from .ingest import normalize_title
+    from .search_text import article_search_text
 
     # Ikkala ISSN ham sinaladi. Bosma ISSN ko'pincha OpenAlex'da yo'q:
     # «Adabiy meros» faqat e-ISSN bo'yicha topiladi.
@@ -225,11 +226,24 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
         )
     }
 
+    # OAI-PMH orqali kelgan maqola DOI'siz bo'lishi mumkin — sarlavha va yil
+    # bo'yicha ham tekshiriladi (ingest bilan bir xil kalit). Ilgari bu yo'q
+    # edi va 923 ta takror shu yo'l bilan kirgan.
+    known_keys = {
+        (normalized, year)
+        for normalized, year in db.execute(
+            select(Article.normalized_title, Article.publication_year).where(
+                Article.journal_id == journal.id, Article.is_deleted.is_(False)
+            )
+        )
+    }
+
     stats = {"status": "ok", "manba": found["name"], "jami": found["works_count"],
              "yangi": 0, "mavjud": 0, "sarlavhasiz": 0}
     for record in iter_works(found["id"], limit=limit):
         identifier = f"{SOURCE_PREFIX}:{record['openalex_id']}"
-        if identifier in known_ids or (record["doi"] and record["doi"] in known_dois):
+        key = (normalize_title(clean_title(record["title"])), record["publication_year"])
+        if identifier in known_ids or (record["doi"] and record["doi"] in known_dois) or key in known_keys:
             stats["mavjud"] += 1
             continue
         stats["yangi"] += 1
@@ -240,7 +254,7 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
         article = Article(
             journal_id=journal.id,
             title=title,
-            normalized_title=normalize(title),
+            normalized_title=normalize_title(title),
             authors=record["authors"],
             abstract=abstract,
             keywords=[],
@@ -270,6 +284,7 @@ def import_journal(db, journal, *, limit: int | None = None, dry_run: bool = Tru
         if record["doi"]:
             known_dois.add(record["doi"])
         known_ids.add(identifier)
+        known_keys.add(key)
 
     if not dry_run:
         db.commit()

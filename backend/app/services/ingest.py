@@ -355,6 +355,8 @@ def _upsert_record(db: Session, source: HarvestSource, record: OAIRecord, cache:
                 Article.journal_id == source.journal_id,
                 Article.normalized_title == normalize_title(title),
                 Article.publication_year == publication_year,
+                # Birlashtirilgan takror qayta tirilmasin — kanonik nusxa yangilansin.
+                Article.duplicate_of.is_(None),
             )
         )
     if article is None:

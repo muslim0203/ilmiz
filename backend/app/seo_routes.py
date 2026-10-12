@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import Article, Journal
-from .services import seo
+from .services import article_quality, seo
 
 router = APIRouter(include_in_schema=False)
 
@@ -128,7 +128,7 @@ def _stream(urls: Iterator[str]) -> StreamingResponse:
 
 
 def _article_chunks(db: Session) -> int:
-    total = db.scalar(select(func.count()).select_from(Article).where(Article.is_deleted.is_(False))) or 0
+    total = db.scalar(select(func.count()).select_from(Article).where(article_quality.indexable_clause())) or 0
     return max(1, -(-total // SITEMAP_CHUNK))
 
 
@@ -169,11 +169,8 @@ def sitemap_pages(db: Session = Depends(get_db)) -> StreamingResponse:
             yield _url(seo.absolute(seo.field_path(name)), changefreq="weekly", priority="0.8")
         for name in seo.cities(db):
             yield _url(seo.absolute(seo.city_path(name)), changefreq="weekly", priority="0.6")
-        # Ro'yxat sahifalari maqolalarga olib boradigan yagona ichki yo'l —
-        # ularsiz chuqurdagi maqolalar orfan bo'lib qoladi.
-        journals = db.scalar(select(func.count()).select_from(Journal)) or 0
-        for page in range(2, -(-journals // seo.JOURNALS_PER_PAGE) + 1):
-            yield _url(seo.absolute(f"/jurnallar?sahifa={page}"), changefreq="weekly", priority="0.4")
+        # `?sahifa=N` sahifalari endi `noindex` — sitemap'da bo'lmasligi kerak.
+        # Ular baribir 1-sahifadan havola orqali skanerlanadi.
 
     return _stream(rows())
 
@@ -216,9 +213,11 @@ def sitemap_articles(index: int, db: Session = Depends(get_db)) -> Response:
         return Response(status_code=404, content="", media_type=_XML)
 
     def rows() -> Iterator[str]:
+        # Faqat sifat mezonidan o'tganlar: sitemap `noindex` sahifani taklif
+        # qilsa, Search Console uni "yuborilgan, lekin noindex" deb belgilaydi.
         statement = (
             select(Article.id, Article.title, Article.updated_at)
-            .where(Article.is_deleted.is_(False))
+            .where(article_quality.indexable_clause())
             .order_by(Article.id)
             .offset((index - 1) * SITEMAP_CHUNK)
             .limit(SITEMAP_CHUNK)

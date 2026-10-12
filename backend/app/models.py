@@ -239,6 +239,9 @@ class Article(Base):
     # Qidiruv shu ustunda ishlaydi: `ilike` va JSON cast'siz.
     search_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    # Takror (bir jurnal, sarlavha va yil) — kanonik maqola ID'si. Bunday
+    # yozuv `is_deleted` bo'ladi va uning sahifasi kanonikka 301 bilan o'tadi.
+    duplicate_of: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     harvested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

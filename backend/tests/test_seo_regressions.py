@@ -158,14 +158,16 @@ class SeoRegressionTests(unittest.TestCase):
         self.assertNotIn('class="seo-item-title" href="/maqola/1-paper-0"', html)
         self.assertIn('class="seo-item-title" href="/maqola/2-paper-1"', html)
 
-    def test_recent_feed_pagination_is_noindex_follow(self):
-        """14 kunlik oynaning `?sahifa=N` manzillari keyin 404 bo'ladi — indeksga tushmasin."""
-        first = self.client.get("/yangi-maqolalar").text
-        self.assertIn('name="robots" content="index, follow', first)
-        second = self.client.get("/yangi-maqolalar?sahifa=2").text
-        self.assertIn('name="robots" content="noindex, follow', second)
-        # Doimiy ro'yxat sahifalanishi avvalgidek indekslanadi.
-        self.assertIn('name="robots" content="index, follow', self.client.get("/maqolalar?sahifa=2").text)
+    def test_paginated_and_filtered_lists_are_noindex_follow(self):
+        """1-sahifa indeksda; `?sahifa=N`, filtr va qidiruv natijalari — yo'q."""
+        self.assertIn('name="robots" content="index, follow', self.client.get("/yangi-maqolalar").text)
+        self.assertIn('name="robots" content="index, follow', self.client.get("/maqolalar").text)
+        for path in ("/yangi-maqolalar?sahifa=2", "/maqolalar?sahifa=2", "/jurnallar?sahifa=2", "/maqolalar?q=test",
+                     "/jurnallar?soha=Tarix"):
+            with self.subTest(path=path):
+                self.assertIn('name="robots" content="noindex, follow', self.client.get(path).text)
+        # Kuzatuv belgilari filtr emas.
+        self.assertIn('name="robots" content="index, follow', self.client.get("/maqolalar?utm_source=t").text)
 
     def test_public_data_is_crawlable_for_rendering_but_admin_is_blocked(self):
         body = self.client.get("/robots.txt").text

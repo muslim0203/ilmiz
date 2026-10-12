@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..models import Article, Journal, OakRegistryEntry
+from . import article_quality
 from .article_text import clean_markup, display_title, paragraphs
 from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
@@ -1205,11 +1206,6 @@ def _article_list(db: Session, page: int, *, recent: bool = False) -> PageMeta:
         description=clip(description, 158),
         path=path,
         body=body,
-        # "Yangi maqolalar" 14 kunlik oyna: sahifalar soni har kuni o'zgaradi,
-        # indekslangan `?sahifa=N` keyin 404 bo'lib Search Console'da
-        # to'planardi. 2-sahifadan boshlab noindex, lekin havolalar
-        # kuzatiladi — maqolalar baribir topiladi.
-        robots=NOINDEX if recent and page > 1 else INDEXABLE,
         jsonld=[
             {
                 "@type": "CollectionPage",
@@ -1253,6 +1249,13 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     article = db.scalar(
         select(Article).where(Article.id == article_id).options(selectinload(Article.journal))
     )
+    if article is not None and article.duplicate_of is not None:
+        # Takror — kanonik nusxaga doimiy yo'naltirish (indeksdagi URL o'sha
+        # sahifaga o'tadi, 404 bo'lib yo'qolmaydi).
+        original = db.get(Article, article.duplicate_of)
+        if original is not None and not original.is_deleted:
+            target = article_path(original.id, original.title)
+            return PageMeta(title="", description="", path=target, status=301, redirect=target)
     if article is None or article.is_deleted:
         return _not_found(requested_path)
 
@@ -1514,6 +1517,9 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         path=canonical_path,
         body="".join(parts),
         og_type="article",
+        # Mezondan o'tmagan sahifa ochiq qoladi va havolalari kuzatiladi,
+        # lekin indeksga taklif qilinmaydi (sitemap'da ham yo'q).
+        robots=INDEXABLE if article_quality.is_indexable(article) else NOINDEX,
         published_time=when or (str(year) if year else None),
         modified_time=article.updated_at.isoformat() if article.updated_at else None,
         jsonld=[scholarly, _breadcrumbs(crumbs)],
@@ -1796,10 +1802,36 @@ def _page_number(params: dict[str, str]) -> int:
         return 1
 
 
+# Bu parametrlar sahifa mazmunini o'zgartirmaydi (sahifa raqami alohida
+# tekshiriladi, qolganlari kuzatuv belgilari).
+_NEUTRAL_PARAMS = frozenset({"sahifa", "page", "ref", "from", "fbclid", "gclid", "yclid"})
+
+
+def _is_filtered(params: dict[str, str]) -> bool:
+    return any(key not in _NEUTRAL_PARAMS and not key.startswith("utm_") for key in params)
+
+
 def build_page(db: Session, path: str, params: dict[str, str] | None = None) -> PageMeta:
-    """URL ni serverda tayyorlangan SEO sahifasiga aylantiradi."""
+    """URL ni serverda tayyorlangan SEO sahifasiga aylantiradi.
+
+    Ro'yxatlarning 2-sahifasidan boshlab va filtr/qidiruv natijalari
+    (`?q=`, `?soha=` ...) `noindex, follow`: ular ichki havola vazifasini
+    bajaradi, lekin indeksda 1-sahifa bilan raqobat qiladigan yupqa nusxa
+    bo'lib turmasin. Maqola sahifasida parametr ahamiyatsiz — kanonik URL bor.
+    """
     params = params or {}
     path = "/" + path.strip("/") if path.strip("/") else "/"
+    meta = _route(db, path, params)
+    if (
+        meta.robots == INDEXABLE
+        and not _ARTICLE_PATH.match(path)
+        and (_page_number(params) > 1 or _is_filtered(params))
+    ):
+        meta.robots = NOINDEX
+    return meta
+
+
+def _route(db: Session, path: str, params: dict[str, str]) -> PageMeta:
     page = _page_number(params)
 
     if path == "/":
