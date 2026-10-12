@@ -642,7 +642,9 @@ def _home(db: Session) -> PageMeta:
     )
     return PageMeta(
         # Bosh sahifaning LCP elementi — hero rasm; boshqa sahifalarga kerak emas.
-        head=['<link rel="preload" as="image" href="/design/moturidiy/architecture.webp" fetchpriority="high">'],
+        # `imagesrcset` — brauzer `<img srcset>` dagi bilan aynan bir nusxani oldindan oladi.
+        head=['<link rel="preload" as="image" imagesrcset="/design/moturidiy/architecture-640.webp 640w, /design/moturidiy/architecture-900.webp 900w, /design/moturidiy/architecture-1184.webp 1184w" '
+              'imagesizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1100px) 45vw, 592px" fetchpriority="high">'],
         title=f"{SITE_NAME} — {SITE_TAGLINE}",
         description=(
             f"O‘zbekiston OAK ro‘yxatidagi {journals} ta ilmiy jurnal va {articles} ta "

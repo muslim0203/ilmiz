@@ -37,14 +37,14 @@ import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
 
 import AboutPage from "@/AboutPage";
+import CitationTool from "@/CitationTool";
 import HomePage from "@/HomePage";
 import PrivacyPage from "@/PrivacyPage";
 import TermsPage from "@/TermsPage";
 import AccountPanel from "@/AccountPanel";
-// Kamdan-kam ochiladigan sahifalar alohida bo'lakda: asosiy JS'ning ~90 KB'i
-// har bir tashrifchiga keraksiz yuklanardi (Lighthouse "unused JavaScript").
+// Admin paneli alohida bo'lakda: u har bir tashrifchiga keraksiz yuklanardi.
+// (CitationTool atigi ~3 KB — ajratilganda kech chiqib, sahifani surardi: CLS 0.2.)
 const AdminDashboard = lazy(() => import("@/AdminDashboard"));
-const CitationTool = lazy(() => import("@/CitationTool"));
 const LAZY_FALLBACK = <div className="mx-auto max-w-3xl px-6 py-16 text-sm text-muted-foreground">Yuklanmoqda…</div>;
 import ArticlePage from "@/ArticlePage";
 import ArchivePage from "@/ArchivePage";
@@ -547,9 +547,7 @@ function App() {
         ) : route.kind === "article" ? (
           <ArticlePage id={route.id} />
         ) : route.kind === "citation" ? (
-          <Suspense fallback={LAZY_FALLBACK}>
-            <CitationTool />
-          </Suspense>
+          <CitationTool />
         ) : route.kind === "about" ? (
           <AboutPage stats={platformStats} />
         ) : route.kind === "privacy" ? (

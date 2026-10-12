@@ -229,7 +229,17 @@ export default function HomePage({
             </div>
           </div>
           <div className="hero-photograph">
-            <img src="/design/moturidiy/architecture.webp" alt="Registon maydoni, Samarqand" width="1184" height="666" fetchPriority="high" decoding="async" />
+            {/* Telefon uchun kichik nusxa: 130 KB rasm mobil LCP'ni 3,4 s ga cho'zardi. */}
+            <img
+              src="/design/moturidiy/architecture-1184.webp"
+              srcSet="/design/moturidiy/architecture-640.webp 640w, /design/moturidiy/architecture-900.webp 900w, /design/moturidiy/architecture-1184.webp 1184w"
+              sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1100px) 45vw, 592px"
+              alt="Registon maydoni, Samarqand"
+              width="1184"
+              height="666"
+              fetchPriority="high"
+              decoding="async"
+            />
           </div>
         </div>
       </section>
