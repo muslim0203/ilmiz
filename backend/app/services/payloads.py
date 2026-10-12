@@ -12,6 +12,7 @@ from __future__ import annotations
 from ..models import Article
 from .article_text import clean_markup, display_title
 from .citations import citation_formats
+from .language_detect import LANGUAGE_NAMES, article_language
 
 
 def article_payload(article: Article) -> dict[str, object]:
@@ -27,7 +28,7 @@ def article_payload(article: Article) -> dict[str, object]:
         "volume": article.volume or "—",
         "issue": article.issue or "—",
         "pages": article.pages or "—",
-        "language": article.language or "Noma’lum",
+        "language": LANGUAGE_NAMES.get(article_language(article).split("-")[0]) or article.language or "Noma’lum",
         "fields": article.fields,
         "abstract": clean_markup(article.abstract) or "Annotatsiya taqdim etilmagan.",
         "keywords": article.keywords,

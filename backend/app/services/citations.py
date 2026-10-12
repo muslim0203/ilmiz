@@ -52,8 +52,10 @@ def gost_citation(article: Article) -> str:
     if location:
         parts.append(" – " + ", ".join(location) + ".")
     if article.pages:
-        language = (article.language or "").casefold()
-        marker = "B." if language in {"o‘zbek", "o'zbek", "uz", "ozbek"} else "С." if language in {"rus", "ru"} else "P."
+        from .language_detect import article_language
+
+        language = article_language(article).split("-")[0]
+        marker = "B." if language in {"uz", "kaa"} else "С." if language == "ru" else "P."
         parts.append(f" – {marker} {article.pages}.")
     if article.doi:
         parts.append(f" – DOI: {article.doi}.")

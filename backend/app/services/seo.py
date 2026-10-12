@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..models import Article, Guide, Journal, OakRegistryEntry
 from . import article_quality
 from .article_text import clean_markup, display_title, paragraphs
+from .language_detect import LANGUAGE_NAMES, article_language, language_code
 from .search_text import normalize
 from .taxonomy import FIELD_GROUPS, canonical_city, city_variants
 from .translit import alternate_names
@@ -52,12 +53,6 @@ INDEXABLE = "index, follow, max-snippet:-1, max-image-preview:large, max-video-p
 NOINDEX = "noindex, follow"
 
 # Bazadagi til nomlari ko'rsatish uchun yozilgan; meta teglarda BCP-47 kerak.
-LANGUAGE_CODES = {
-    "o‘zbek": "uz", "o'zbek": "uz", "ozbek": "uz", "uz": "uz", "uz_latn": "uz-Latn",
-    "uz_cyrl": "uz-Cyrl", "rus": "ru", "ru": "ru", "ingliz": "en", "en": "en",
-    "kaa": "kaa", "qoraqalpoq": "kaa", "kaz": "kk", "qozoq": "kk", "ara": "ar",
-    "arab": "ar", "tojik": "tg", "turk": "tr", "nemis": "de", "fransuz": "fr",
-}
 
 _WORD = re.compile(r"[^a-z0-9]+")
 _TAGS = re.compile(r"<[^>]+>")
@@ -154,10 +149,6 @@ def web_url(value: str | None) -> str | None:
                         and not any(char.isspace() for char in text)) else None
     except ValueError:
         return None
-
-
-def language_code(value: str | None) -> str:
-    return LANGUAGE_CODES.get(normalize(value), DEFAULT_LANG)
 
 
 def publication_date(raw: str | None, year: int | None) -> str:
@@ -650,6 +641,8 @@ def _home(db: Session) -> PageMeta:
         + _faq_html(faq)
     )
     return PageMeta(
+        # Bosh sahifaning LCP elementi — hero rasm; boshqa sahifalarga kerak emas.
+        head=['<link rel="preload" as="image" href="/design/moturidiy/architecture.webp" fetchpriority="high">'],
         title=f"{SITE_NAME} — {SITE_TAGLINE}",
         description=(
             f"O‘zbekiston OAK ro‘yxatidagi {journals} ta ilmiy jurnal va {articles} ta "
@@ -1318,7 +1311,9 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
     authors = article.authors or []
     when = publication_date(article.publication_date, article.publication_year)
     year = article.publication_year
-    lang = language_code(article.language)
+    # Jurnal metadata'sidagi til ko'pincha maqolaniki emas (prod'da 39 % noto'g'ri
+    # edi) — sarlavha va annotatsiyadan aniqlanadi, aniqlanmasa metadata.
+    lang = article_language(article)
     # Bazada tozalanmagan yozuv qolgan bo'lsa ham sahifada HTML ko'rinmasin.
     abstract = clean_markup(article.abstract) or ""
     keywords = article.keywords or []
@@ -1355,7 +1350,7 @@ def _article_page(db: Session, article_id: int, requested_path: str) -> PageMeta
         ("Jild", article.volume),
         ("Son", article.issue),
         ("Betlar", article.pages),
-        ("Til", article.language),
+        ("Til", LANGUAGE_NAMES.get(lang.split("-")[0]) or article.language),
         ("Ilmiy soha", ", ".join(article.fields or [])),
         ("DOI", article.doi),
         ("Indeksga qo‘shilgan", article.harvested_at.date().isoformat() if article.harvested_at else None),

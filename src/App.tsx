@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -37,12 +37,15 @@ import { loadCurrentUser, type AuthUser } from "@/authApi";
 import type { Article, Journal } from "@/types";
 
 import AboutPage from "@/AboutPage";
-import CitationTool from "@/CitationTool";
 import HomePage from "@/HomePage";
 import PrivacyPage from "@/PrivacyPage";
 import TermsPage from "@/TermsPage";
 import AccountPanel from "@/AccountPanel";
-import AdminDashboard from "@/AdminDashboard";
+// Kamdan-kam ochiladigan sahifalar alohida bo'lakda: asosiy JS'ning ~90 KB'i
+// har bir tashrifchiga keraksiz yuklanardi (Lighthouse "unused JavaScript").
+const AdminDashboard = lazy(() => import("@/AdminDashboard"));
+const CitationTool = lazy(() => import("@/CitationTool"));
+const LAZY_FALLBACK = <div className="mx-auto max-w-3xl px-6 py-16 text-sm text-muted-foreground">Yuklanmoqda…</div>;
 import ArticlePage from "@/ArticlePage";
 import ArchivePage from "@/ArchivePage";
 import DirectoryPage from "@/DirectoryPage";
@@ -394,7 +397,11 @@ function App() {
   };
 
   if (adminOpen) {
-    return <AdminDashboard onClose={() => setAdminOpen(false)} />;
+    return (
+      <Suspense fallback={LAZY_FALLBACK}>
+        <AdminDashboard onClose={() => setAdminOpen(false)} />
+      </Suspense>
+    );
   }
 
   const hero: { eyebrow: string; title: React.ReactNode; lead: string } = (() => {
@@ -540,7 +547,9 @@ function App() {
         ) : route.kind === "article" ? (
           <ArticlePage id={route.id} />
         ) : route.kind === "citation" ? (
-          <CitationTool />
+          <Suspense fallback={LAZY_FALLBACK}>
+            <CitationTool />
+          </Suspense>
         ) : route.kind === "about" ? (
           <AboutPage stats={platformStats} />
         ) : route.kind === "privacy" ? (
