@@ -1,0 +1,139 @@
+name: IlmIz uptime
+
+# Tashqi monitoring: sayt tashqaridan har 10 daqiqada tekshiriladi.
+#
+# Nega kerak: 2026-10-13 da OVH to'lov sababli VPS'ni o'chirdi va sayt
+# 5 kun ishlamadi — buni hech kim sezmadi, Google esa shu oraliqda
+# skanerlashni deyarli to'xtatdi. Server ichidagi tekshiruv bunday holatni
+# ko'ra olmaydi (server o'zi o'chiq bo'ladi), shuning uchun bu GitHub'da turadi.
+#
+# Ogohlantirish: tekshiruv yiqilsa workflow `failure` bilan tugaydi va GitHub
+# jadvalni oxirgi o'zgartirgan foydalanuvchiga e-pochta yuboradi
+# (github.com/settings/notifications -> Actions -> "Only notify for failed
+# workflows"). Ixtiyoriy: `TELEGRAM_BOT_TOKEN` va `TELEGRAM_CHAT_ID` repo
+# secret'lari qo'shilsa, Telegram'ga ham xabar ketadi.
+#
+# Eslatma: ochiq repo'da 60 kun hech qanday commit bo'lmasa GitHub jadvalli
+# workflow'larni o'chirib qo'yadi — Actions sahifasida "Enable" bosiladi.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_fail:
+        description: "Ogohlantirish yetib borishini sinash uchun ataylab yiqitish"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    env:
+      SITE: https://ilmiz.uz
+      # Sertifikat muddati shundan kam qolsa ham ogohlantiriladi.
+      CERT_MIN_DAYS: '14'
+      FORCE_FAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_fail || false }}
+    steps:
+      - name: Check site
+        id: check
+        shell: bash
+        run: |
+          set -uo pipefail
+          health_path=/api/health
+          if [ "$FORCE_FAIL" = "true" ]; then
+            health_path=/api/health-sinov-yiqilishi
+            echo "Sinov: ataylab yo'q manzil tekshirilmoqda"
+          fi
+
+          check_once() {
+            local problems=()
+            local body code
+
+            body=$(curl -sS --max-time 20 -w '\n%{http_code}' "$SITE$health_path" 2>&1) || true
+            code=${body##*$'\n'}
+            if [ "$code" != "200" ] || ! grep -q '"status":"ok"' <<<"$body"; then
+              problems+=("health $health_path -> HTTP $code")
+            fi
+
+            # Bazaga tegadigan endpoint: ilova ishlayapti, lekin baza o'qilmasa ham ushlanadi.
+            body=$(curl -sS --max-time 25 -w '\n%{http_code}' "$SITE/api/stats" 2>&1) || true
+            code=${body##*$'\n'}
+            if [ "$code" != "200" ] || ! grep -Eq '"articles":[1-9][0-9]*' <<<"$body"; then
+              problems+=("/api/stats -> HTTP $code")
+            fi
+
+            body=$(curl -sS --max-time 25 -w '\n%{http_code}' "$SITE/" 2>&1) || true
+            code=${body##*$'\n'}
+            if [ "$code" != "200" ] || ! grep -q '<title>IlmIz' <<<"$body"; then
+              problems+=("bosh sahifa -> HTTP $code")
+            fi
+
+            if [ ${#problems[@]} -gt 0 ]; then
+              printf '%s\n' "${problems[@]}"
+              return 1
+            fi
+            return 0
+          }
+
+          # Deploy paytidagi qisqa uzilish yoki bitta sekin javob ogohlantirish
+          # bermasin: 3 urinish, 45 soniya oraliq bilan.
+          result=""
+          for attempt in 1 2 3; do
+            if result=$(check_once); then
+              echo "Urinish $attempt: hammasi joyida"
+              result=""
+              break
+            fi
+            echo "Urinish $attempt muvaffaqiyatsiz:"
+            echo "$result"
+            [ "$attempt" -lt 3 ] && sleep 45
+          done
+
+          end=$(echo | openssl s_client -connect ilmiz.uz:443 -servername ilmiz.uz 2>/dev/null \
+            | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+          if [ -n "$end" ]; then
+            days=$(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))
+            echo "TLS sertifikati: $days kun qoldi ($end)"
+            if [ "$days" -lt "$CERT_MIN_DAYS" ]; then
+              result="${result:+$result$'\n'}TLS sertifikati $days kunda tugaydi"
+            fi
+          else
+            result="${result:+$result$'\n'}TLS sertifikatini o'qib bo'lmadi"
+          fi
+
+          if [ -n "$result" ]; then
+            {
+              echo "problems<<EOF"
+              echo "$result"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::error title=ilmiz.uz ishlamayapti::$(echo "$result" | tr '\n' ';')"
+            exit 1
+          fi
+
+      - name: Telegram alert
+        if: failure()
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PROBLEMS: ${{ steps.check.outputs.problems }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo "Telegram sozlanmagan — faqat GitHub e-pochtasi yuboriladi"
+            exit 0
+          fi
+          text=$(printf 'ilmiz.uz ishlamayapti\n%s\n%s' "$PROBLEMS" "$RUN_URL")
+          curl -sS --max-time 20 -o /dev/null -w 'Telegram: HTTP %{http_code}\n' \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${text}"
